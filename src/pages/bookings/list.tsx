@@ -497,7 +497,7 @@ export const BookingList: React.FC = () => {
   };
 
   return (
-    <RoleGuard allowedRoles={['super_admin', 'admin', 'therapist']}>
+    <RoleGuard requiredRole="admin">
       <div style={{ padding: 24 }}>
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
           <Col span={12}>
@@ -614,7 +614,7 @@ export const BookingList: React.FC = () => {
                 <RangePicker
                   placeholder={['Start Date', 'End Date']}
                   value={filters.date_range}
-                  onChange={(dates) => setFilters(prev => ({ ...prev, date_range: dates }))}
+                  onChange={(dates) => setFilters(prev => ({ ...prev, date_range: dates as [Dayjs, Dayjs] | null }))}
                   style={{ width: '100%' }}
                 />
               </Col>

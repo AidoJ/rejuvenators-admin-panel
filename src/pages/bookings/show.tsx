@@ -343,7 +343,7 @@ export const BookingShow: React.FC<BookingShowProps> = ({ id }) => {
   }
 
   return (
-    <RoleGuard allowedRoles={['super_admin', 'admin', 'therapist']}>
+    <RoleGuard requiredRole="admin">
       <div style={{ padding: 24 }}>
         {/* Header */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

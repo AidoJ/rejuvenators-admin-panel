@@ -19,7 +19,8 @@ import routerBindings, {
   UnsavedChangesNotifier,
 } from "@refinedev/react-router";
 import { dataProvider, liveProvider } from "@refinedev/supabase";
-import { App as AntdApp } from "antd";
+import { App as AntdApp, Button } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { BrowserRouter, Outlet, Route, Routes, useParams } from "react-router";
 import authProvider from "./authProvider";
 import { Header } from "./components/header";

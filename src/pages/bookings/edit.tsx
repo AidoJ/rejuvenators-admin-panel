@@ -37,7 +37,8 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
-import { useGetIdentity, useNavigation, useParams } from '@refinedev/core';
+import { useGetIdentity, useNavigation } from '@refinedev/core';
+import { useParams } from 'react-router';
 import { supabaseClient } from '../../utility';
 import { UserIdentity, canAccess, isTherapist, isAdmin } from '../../utils/roleUtils';
 import { RoleGuard } from '../../components/RoleGuard';
@@ -374,7 +375,7 @@ export const BookingEdit: React.FC = () => {
   }
 
   return (
-    <RoleGuard allowedRoles={['super_admin', 'admin', 'therapist']}>
+    <RoleGuard requiredRole="admin">
       <div style={{ padding: 24 }}>
         {/* Header */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
