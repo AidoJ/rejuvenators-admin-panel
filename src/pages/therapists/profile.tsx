@@ -394,7 +394,7 @@ export const TherapistProfileManagement: React.FC = () => {
               { key: 'services', tab: 'Services' },
             ]}
             activeTabKey={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={(key) => setActiveTab(key as 'profile' | 'availability' | 'services')}
           >
             {/* Profile Tab */}
             {activeTab === 'profile' && (
