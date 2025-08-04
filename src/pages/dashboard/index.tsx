@@ -28,19 +28,12 @@ import { useGetIdentity } from '@refinedev/core';
 import { supabaseClient } from '../../utility';
 import dayjs, { Dayjs } from 'dayjs';
 
+// Import role utilities
+import { UserIdentity, canAccess, isSuperAdmin, isAdmin, isTherapist, getRoleName, getRoleColor } from '../../utils/roleUtils';
+
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
-
-// Define identity interface
-interface UserIdentity {
-  id?: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  role?: string;
-  name?: string;
-}
 
 interface BookingStats {
   totalBookings: number;
@@ -98,8 +91,7 @@ export const Dashboard: React.FC = () => {
   });
   const [selectedPreset, setSelectedPreset] = useState<string>('currentMonth');
 
-  const isTherapist = identity?.role === 'therapist';
-  const isAdmin = identity?.role === 'super_admin' || identity?.role === 'admin';
+  const userRole = identity?.role;
 
   useEffect(() => {
     if (identity) {
@@ -211,7 +203,7 @@ export const Dashboard: React.FC = () => {
         .lte('booking_time', dateRange.end.toISOString());
 
       // If therapist, only show their bookings
-      if (isTherapist && identity?.id) {
+      if (isTherapist(userRole) && identity?.id) {
         // Get therapist profile ID first
         const { data: therapistProfile } = await supabaseClient
           .from('therapist_profiles')
@@ -250,7 +242,7 @@ export const Dashboard: React.FC = () => {
 
       // Get active therapists count (admin only)
       let activeTherapists = 0;
-      if (isAdmin) {
+      if (canAccess(userRole, 'canViewAllTherapists')) {
         const { data: therapists } = await supabaseClient
           .from('therapist_profiles')
           .select('id')
@@ -366,7 +358,7 @@ export const Dashboard: React.FC = () => {
       key: 'price',
       render: (price: number) => `$${price.toFixed(2)}`,
     },
-    ...(isAdmin ? [{
+    ...(canAccess(userRole, 'canViewAllEarnings') ? [{
       title: 'Therapist Fee',
       dataIndex: 'therapist_fee',
       key: 'therapist_fee',
@@ -404,10 +396,13 @@ export const Dashboard: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <Title level={2}>
-              {isTherapist ? `Welcome back, ${identity?.first_name || identity?.name || 'Therapist'}!` : 'Rejuvenators Dashboard'}
+              {isTherapist(userRole) 
+                ? `Welcome back, ${identity?.first_name || identity?.name || 'Therapist'}!` 
+                : `Rejuvenators Dashboard - ${getRoleName(userRole)}`
+              }
             </Title>
             <Text type="secondary">
-              {isTherapist 
+              {isTherapist(userRole) 
                 ? 'Here\'s an overview of your bookings and performance'
                 : 'Overview of your massage booking business'
               }
@@ -493,19 +488,17 @@ export const Dashboard: React.FC = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Conversion Rate"
-              value={stats?.conversionRate || 0}
-              prefix={<PercentageOutlined />}
-              precision={1}
-              suffix="%"
-              valueStyle={{ color: '#fa8c16' }}
+              title={canAccess(userRole, 'canViewAllTherapists') ? "Active Therapists" : "Your Completed"}
+              value={canAccess(userRole, 'canViewAllTherapists') ? stats?.activeTherapists || 0 : stats?.completedBookings || 0}
+              prefix={canAccess(userRole, 'canViewAllTherapists') ? <UserOutlined /> : <CheckCircleOutlined />}
+              valueStyle={{ color: '#722ed1' }}
             />
           </Card>
         </Col>
       </Row>
 
       {/* Admin-specific Statistics */}
-      {isAdmin && (
+      {canAccess(userRole, 'canViewAllEarnings') && (
         <>
           {/* Therapist Fees and Margins */}
           <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -538,10 +531,12 @@ export const Dashboard: React.FC = () => {
             <Col span={8}>
               <Card>
                 <Statistic
-                  title="Active Therapists"
-                  value={stats?.activeTherapists || 0}
-                  prefix={<UserOutlined />}
-                  valueStyle={{ color: '#722ed1' }}
+                  title="Conversion Rate"
+                  value={stats?.conversionRate || 0}
+                  prefix={<PercentageOutlined />}
+                  precision={1}
+                  suffix="%"
+                  valueStyle={{ color: '#fa8c16' }}
                 />
               </Card>
             </Col>
