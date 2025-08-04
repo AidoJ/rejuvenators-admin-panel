@@ -20,7 +20,7 @@ import routerBindings, {
 } from "@refinedev/react-router";
 import { dataProvider, liveProvider } from "@refinedev/supabase";
 import { App as AntdApp } from "antd";
-import { BrowserRouter, Outlet, Route, Routes } from "react-router";
+import { BrowserRouter, Outlet, Route, Routes, useParams } from "react-router";
 import authProvider from "./authProvider";
 import { Header } from "./components/header";
 import { ColorModeContextProvider } from "./contexts/color-mode";
@@ -28,12 +28,38 @@ import { supabaseClient } from "./utility";
 
 // Import the new components
 import { CalendarBookingManagement } from "./pages/bookings/calendar";
+import { BookingList } from "./pages/bookings/list";
+import { BookingShow } from "./pages/bookings/show";
+import { BookingEdit } from "./pages/bookings/edit";
 import { TherapistProfileManagement } from "./pages/therapists/profile";
 
 // Simple placeholder components for features we haven't built yet
-const BookingShow = () => <div style={{padding: 24}}><h1>Booking Details</h1><p>Individual booking details will go here</p></div>;
-const BookingEdit = () => <div style={{padding: 24}}><h1>Edit Booking</h1><p>Edit booking form will go here</p></div>;
-const BookingCreate = () => <div style={{padding: 24}}><h1>Create Booking</h1><p>Create new booking form will go here</p></div>;
+const BookingCreate = () => (
+  <div style={{padding: 24, textAlign: 'center'}}>
+    <h1>Create New Booking</h1>
+    <p>To create a new booking, please use the booking platform which has all the necessary logic and functionality.</p>
+    <Button 
+      type="primary" 
+      size="large" 
+      href="https://your-booking-platform-url.com" 
+      target="_blank"
+      icon={<PlusOutlined />}
+    >
+      Go to Booking Platform
+    </Button>
+  </div>
+);
+
+// Wrapper components to handle params
+const BookingShowWrapper = () => {
+  const { id } = useParams();
+  return <BookingShow id={id!} />;
+};
+
+const BookingEditWrapper = () => {
+  const { id } = useParams();
+  return <BookingEdit />;
+};
 
 const TherapistList = () => <div style={{padding: 24}}><h1>Therapist Management</h1><p>Admin therapist list will go here</p></div>;
 const TherapistShow = () => <div style={{padding: 24}}><h1>Therapist Details</h1><p>Therapist details will go here</p></div>;
@@ -194,10 +220,10 @@ function App() {
                     
                     {/* Booking Management */}
                     <Route path="/bookings">
-                      <Route index element={<CalendarBookingManagement />} />
+                      <Route index element={<BookingList />} />
                       <Route path="create" element={<BookingCreate />} />
-                      <Route path="edit/:id" element={<BookingEdit />} />
-                      <Route path="show/:id" element={<BookingShow />} />
+                      <Route path="edit/:id" element={<BookingEditWrapper />} />
+                      <Route path="show/:id" element={<BookingShowWrapper />} />
                     </Route>
                     
                     {/* Therapist Management (Admin) */}
