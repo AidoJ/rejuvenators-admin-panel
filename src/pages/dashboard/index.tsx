@@ -15,7 +15,9 @@ import {
   UserOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  PercentageOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
 import { useGetIdentity } from '@refinedev/core';
 import { supabaseClient } from '../../utility';
@@ -41,6 +43,12 @@ interface BookingStats {
   totalRevenue: number;
   weekRevenue: number;
   monthRevenue: number;
+  totalTherapistFees: number;
+  weekTherapistFees: number;
+  monthTherapistFees: number;
+  totalNetMargin: number;
+  weekNetMargin: number;
+  monthNetMargin: number;
   activeTherapists: number;
   completedBookings: number;
   confirmedBookings: number;
@@ -56,6 +64,7 @@ interface RecentBooking {
   booking_time: string;
   status: string;
   price: number;
+  therapist_fee?: number;
 }
 
 export const Dashboard: React.FC = () => {
@@ -72,6 +81,11 @@ export const Dashboard: React.FC = () => {
       fetchDashboardData();
     }
   }, [identity]);
+
+  const calculateMargin = (revenue: number, therapistFees: number): number => {
+    if (revenue === 0) return 0;
+    return ((revenue - therapistFees) / revenue) * 100;
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -131,7 +145,7 @@ export const Dashboard: React.FC = () => {
       const pendingBookings = bookings?.filter(b => b.status === 'requested') || [];
       const cancelledBookings = bookings?.filter(b => b.status === 'cancelled') || [];
 
-      // Calculate revenue
+      // Calculate revenue (only from completed bookings)
       const totalRevenue = completedBookings.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
       const weekRevenue = weekBookings
         .filter(b => b.status === 'completed')
@@ -139,6 +153,20 @@ export const Dashboard: React.FC = () => {
       const monthRevenue = monthBookings
         .filter(b => b.status === 'completed')
         .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
+
+      // Calculate therapist fees (only from completed bookings)
+      const totalTherapistFees = completedBookings.reduce((sum, b) => sum + (parseFloat(b.therapist_fee) || 0), 0);
+      const weekTherapistFees = weekBookings
+        .filter(b => b.status === 'completed')
+        .reduce((sum, b) => sum + (parseFloat(b.therapist_fee) || 0), 0);
+      const monthTherapistFees = monthBookings
+        .filter(b => b.status === 'completed')
+        .reduce((sum, b) => sum + (parseFloat(b.therapist_fee) || 0), 0);
+
+      // Calculate net margins
+      const totalNetMargin = calculateMargin(totalRevenue, totalTherapistFees);
+      const weekNetMargin = calculateMargin(weekRevenue, weekTherapistFees);
+      const monthNetMargin = calculateMargin(monthRevenue, monthTherapistFees);
 
       // Get active therapists count (admin only)
       let activeTherapists = 0;
@@ -158,6 +186,12 @@ export const Dashboard: React.FC = () => {
         totalRevenue,
         weekRevenue,
         monthRevenue,
+        totalTherapistFees,
+        weekTherapistFees,
+        monthTherapistFees,
+        totalNetMargin,
+        weekNetMargin,
+        monthNetMargin,
         activeTherapists,
         completedBookings: completedBookings.length,
         confirmedBookings: confirmedBookings.length,
@@ -182,7 +216,8 @@ export const Dashboard: React.FC = () => {
           service_name: booking.services?.name || 'Unknown Service',
           booking_time: booking.booking_time,
           status: booking.status,
-          price: parseFloat(booking.price) || 0
+          price: parseFloat(booking.price) || 0,
+          therapist_fee: parseFloat(booking.therapist_fee) || 0
         })) || [];
 
       setStats(dashboardStats);
@@ -257,6 +292,12 @@ export const Dashboard: React.FC = () => {
       dataIndex: 'price',
       key: 'price',
       render: (price: number) => `$${price.toFixed(2)}`,
+    },
+    {
+      title: 'Therapist Fee',
+      dataIndex: 'therapist_fee',
+      key: 'therapist_fee',
+      render: (fee: number) => fee ? `$${fee.toFixed(2)}` : '-',
     },
   ];
 
@@ -370,6 +411,96 @@ export const Dashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Therapist Fees Statistics (Admin only) */}
+      {isAdmin && (
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="Week Therapist Fees"
+                value={stats?.weekTherapistFees || 0}
+                prefix={<TeamOutlined />}
+                precision={2}
+                valueStyle={{ color: '#fa541c' }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="Month Therapist Fees"
+                value={stats?.monthTherapistFees || 0}
+                prefix={<TeamOutlined />}
+                precision={2}
+                valueStyle={{ color: '#fa541c' }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="Total Therapist Fees"
+                value={stats?.totalTherapistFees || 0}
+                prefix={<TeamOutlined />}
+                precision={2}
+                valueStyle={{ color: '#fa541c' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* Net Margin Statistics (Admin only) */}
+      {isAdmin && (
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="Week Net Margin"
+                value={stats?.weekNetMargin || 0}
+                prefix={<PercentageOutlined />}
+                precision={1}
+                suffix="%"
+                valueStyle={{ 
+                  color: (stats?.weekNetMargin || 0) >= 50 ? '#52c41a' : 
+                         (stats?.weekNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
+                }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="Month Net Margin"
+                value={stats?.monthNetMargin || 0}
+                prefix={<PercentageOutlined />}
+                precision={1}
+                suffix="%"
+                valueStyle={{ 
+                  color: (stats?.monthNetMargin || 0) >= 50 ? '#52c41a' : 
+                         (stats?.monthNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
+                }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="Total Net Margin"
+                value={stats?.totalNetMargin || 0}
+                prefix={<PercentageOutlined />}
+                precision={1}
+                suffix="%"
+                valueStyle={{ 
+                  color: (stats?.totalNetMargin || 0) >= 50 ? '#52c41a' : 
+                         (stats?.totalNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
+                }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* Booking Status Overview */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
