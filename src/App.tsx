@@ -1,3 +1,4 @@
+import { Dashboard } from "./pages/dashboard";
 import { Authenticated, Refine } from "@refinedev/core";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
@@ -26,7 +27,6 @@ import { ColorModeContextProvider } from "./contexts/color-mode";
 import { supabaseClient } from "./utility";
 
 // Simple placeholder components for now - we'll create these properly later
-const Dashboard = () => <div style={{padding: 24}}><h1>Rejuvenators Dashboard</h1><p>Welcome to your massage booking admin panel!</p></div>;
 const BookingList = () => <div style={{padding: 24}}><h1>Bookings</h1><p>Massage booking list will go here</p></div>;
 const BookingShow = () => <div style={{padding: 24}}><h1>Booking Details</h1></div>;
 const BookingEdit = () => <div style={{padding: 24}}><h1>Edit Booking</h1></div>;
