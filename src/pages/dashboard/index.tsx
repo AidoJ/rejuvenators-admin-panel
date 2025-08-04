@@ -1,1 +1,418 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Card, 
+  Col, 
+  Row, 
+  Statistic, 
+  Table, 
+  Tag, 
+  Typography, 
+  Space,
+  DatePicker,
+  Select,
+  Spin
+} from 'antd';
+import {
+  DollarOutlined,
+  CalendarOutlined,
+  UserOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined
+} from '@ant-design/icons';
+import { useGetIdentity } from '@refinedev/core';
+import { supabaseClient } from '../utility';
+import dayjs from 'dayjs';
 
+const { Title, Text } = Typography;
+const { Option } = Select;
+const { RangePicker } = DatePicker;
+
+interface BookingStats {
+  totalBookings: number;
+  todayBookings: number;
+  weekBookings: number;
+  monthBookings: number;
+  totalRevenue: number;
+  weekRevenue: number;
+  monthRevenue: number;
+  activeTherapists: number;
+  completedBookings: number;
+  confirmedBookings: number;
+  pendingBookings: number;
+  cancelledBookings: number;
+}
+
+interface RecentBooking {
+  id: string;
+  customer_name: string;
+  therapist_name: string;
+  service_name: string;
+  booking_time: string;
+  status: string;
+  price: number;
+}
+
+export const Dashboard: React.FC = () => {
+  const { data: identity } = useGetIdentity();
+  const [stats, setStats] = useState<BookingStats | null>(null);
+  const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
+    dayjs().subtract(30, 'days'),
+    dayjs()
+  ]);
+
+  const isTherapist = identity?.role === 'therapist';
+  const isAdmin = identity?.role === 'super_admin' || identity?.role === 'admin';
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [identity, dateRange]);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Build base query with role-based filtering
+      let bookingsQuery = supabaseClient
+        .from('bookings')
+        .select(`
+          *,
+          therapist_profiles!bookings_therapist_id_fkey(first_name, last_name),
+          customers(first_name, last_name),
+          services(name)
+        `);
+
+      // If therapist, only show their bookings
+      if (isTherapist && identity?.id) {
+        // Get therapist profile ID first
+        const { data: therapistProfile } = await supabaseClient
+          .from('therapist_profiles')
+          .select('id')
+          .eq('user_id', identity.id)
+          .single();
+        
+        if (therapistProfile) {
+          bookingsQuery = bookingsQuery.eq('therapist_id', therapistProfile.id);
+        }
+      }
+
+      const { data: bookings, error } = await bookingsQuery;
+
+      if (error) {
+        console.error('Error fetching bookings:', error);
+        return;
+      }
+
+      // Calculate statistics
+      const now = dayjs();
+      const todayStart = now.startOf('day');
+      const weekStart = now.startOf('week');
+      const monthStart = now.startOf('month');
+
+      const todayBookings = bookings?.filter(b => 
+        dayjs(b.booking_time).isAfter(todayStart)
+      ) || [];
+
+      const weekBookings = bookings?.filter(b => 
+        dayjs(b.booking_time).isAfter(weekStart)
+      ) || [];
+
+      const monthBookings = bookings?.filter(b => 
+        dayjs(b.booking_time).isAfter(monthStart)
+      ) || [];
+
+      const completedBookings = bookings?.filter(b => b.status === 'completed') || [];
+      const confirmedBookings = bookings?.filter(b => b.status === 'confirmed') || [];
+      const pendingBookings = bookings?.filter(b => b.status === 'requested') || [];
+      const cancelledBookings = bookings?.filter(b => b.status === 'cancelled') || [];
+
+      // Calculate revenue
+      const totalRevenue = completedBookings.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
+      const weekRevenue = weekBookings
+        .filter(b => b.status === 'completed')
+        .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
+      const monthRevenue = monthBookings
+        .filter(b => b.status === 'completed')
+        .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
+
+      // Get active therapists count (admin only)
+      let activeTherapists = 0;
+      if (isAdmin) {
+        const { data: therapists } = await supabaseClient
+          .from('therapist_profiles')
+          .select('id')
+          .eq('is_active', true);
+        activeTherapists = therapists?.length || 0;
+      }
+
+      const dashboardStats: BookingStats = {
+        totalBookings: bookings?.length || 0,
+        todayBookings: todayBookings.length,
+        weekBookings: weekBookings.length,
+        monthBookings: monthBookings.length,
+        totalRevenue,
+        weekRevenue,
+        monthRevenue,
+        activeTherapists,
+        completedBookings: completedBookings.length,
+        confirmedBookings: confirmedBookings.length,
+        pendingBookings: pendingBookings.length,
+        cancelledBookings: cancelledBookings.length
+      };
+
+      // Prepare recent bookings
+      const recent = bookings
+        ?.sort((a, b) => dayjs(b.booking_time).unix() - dayjs(a.booking_time).unix())
+        .slice(0, 10)
+        .map(booking => ({
+          id: booking.id,
+          customer_name: booking.customers 
+            ? `${booking.customers.first_name} ${booking.customers.last_name}`
+            : booking.first_name && booking.last_name 
+              ? `${booking.first_name} ${booking.last_name}`
+              : booking.booker_name || 'Unknown Customer',
+          therapist_name: booking.therapist_profiles 
+            ? `${booking.therapist_profiles.first_name} ${booking.therapist_profiles.last_name}`
+            : 'Unassigned',
+          service_name: booking.services?.name || 'Unknown Service',
+          booking_time: booking.booking_time,
+          status: booking.status,
+          price: parseFloat(booking.price) || 0
+        })) || [];
+
+      setStats(dashboardStats);
+      setRecentBookings(recent);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'green';
+      case 'confirmed': return 'blue';
+      case 'requested': return 'orange';
+      case 'cancelled': return 'red';
+      case 'declined': return 'red';
+      default: return 'default';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return <CheckCircleOutlined />;
+      case 'confirmed': return <CalendarOutlined />;
+      case 'requested': return <ClockCircleOutlined />;
+      default: return <ExclamationCircleOutlined />;
+    }
+  };
+
+  const recentBookingsColumns = [
+    {
+      title: 'Customer',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      render: (name: string) => <Text strong>{name}</Text>
+    },
+    {
+      title: 'Therapist',
+      dataIndex: 'therapist_name',
+      key: 'therapist_name',
+    },
+    {
+      title: 'Service',
+      dataIndex: 'service_name',
+      key: 'service_name',
+    },
+    {
+      title: 'Date & Time',
+      dataIndex: 'booking_time',
+      key: 'booking_time',
+      render: (time: string) => (
+        <div>
+          <div>{dayjs(time).format('MMM DD, YYYY')}</div>
+          <Text type="secondary">{dayjs(time).format('h:mm A')}</Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => (
+        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)}>
+          {status.charAt(0).toUpperCase() + status.slice(1)}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Price',
+      dataIndex: 'price',
+      key: 'price',
+      render: (price: number) => `$${price.toFixed(2)}`,
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2}>
+          {isTherapist ? `Welcome back, ${identity?.first_name}!` : 'Rejuvenators Dashboard'}
+        </Title>
+        <Text type="secondary">
+          {isTherapist 
+            ? 'Here\'s an overview of your bookings and performance'
+            : 'Overview of your massage booking business'
+          }
+        </Text>
+      </div>
+
+      {/* Key Statistics */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Today's Bookings"
+              value={stats?.todayBookings || 0}
+              prefix={<CalendarOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="This Week"
+              value={stats?.weekBookings || 0}
+              prefix={<CalendarOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="This Month"
+              value={stats?.monthBookings || 0}
+              prefix={<CalendarOutlined />}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Total Bookings"
+              value={stats?.totalBookings || 0}
+              prefix={<CalendarOutlined />}
+              valueStyle={{ color: '#fa8c16' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Revenue Statistics */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title="Week Revenue"
+              value={stats?.weekRevenue || 0}
+              prefix={<DollarOutlined />}
+              precision={2}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title="Month Revenue"
+              value={stats?.monthRevenue || 0}
+              prefix={<DollarOutlined />}
+              precision={2}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title={isAdmin ? "Active Therapists" : "Your Completed"}
+              value={isAdmin ? stats?.activeTherapists || 0 : stats?.completedBookings || 0}
+              prefix={isAdmin ? <UserOutlined /> : <CheckCircleOutlined />}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Booking Status Overview */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Completed"
+              value={stats?.completedBookings || 0}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Confirmed"  
+              value={stats?.confirmedBookings || 0}
+              prefix={<CalendarOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Pending"
+              value={stats?.pendingBookings || 0}
+              prefix={<ClockCircleOutlined />}
+              valueStyle={{ color: '#fa8c16' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Cancelled"
+              value={stats?.cancelledBookings || 0}
+              prefix={<ExclamationCircleOutlined />}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Recent Bookings */}
+      <Card title="Recent Bookings" style={{ marginBottom: 24 }}>
+        <Table
+          dataSource={recentBookings}
+          columns={recentBookingsColumns}
+          rowKey="id"
+          pagination={{ pageSize: 5 }}
+          size="middle"
+        />
+      </Card>
+    </div>
+  );
+};
