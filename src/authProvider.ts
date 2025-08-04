@@ -1,8 +1,14 @@
 import { AuthBindings } from "@refinedev/core";
 import { supabaseClient } from "./utility";
 
-const authProvider = {
-  login: async ({ email, password }) => {
+// Define login credentials type
+interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+const authProvider: AuthBindings = {
+  login: async ({ email, password }: LoginCredentials) => {
     try {
       console.log('Attempting login for:', email);
       
@@ -34,12 +40,12 @@ const authProvider = {
         success: true,
         redirectTo: "/",
       };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
       return {
         success: false,
         error: {
-          message: "Login failed: " + error.message,
+          message: "Login failed: " + (error instanceof Error ? error.message : 'Unknown error'),
           name: "Network Error",
         },
       };
@@ -91,7 +97,7 @@ const authProvider = {
     return null;
   },
 
-  onError: async (error) => {
+  onError: async (error: any) => {
     console.error('Auth error:', error);
     return { error };
   },
