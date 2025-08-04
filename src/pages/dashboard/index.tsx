@@ -7,9 +7,6 @@ import {
   Table, 
   Tag, 
   Typography, 
-  Space,
-  DatePicker,
-  Select,
   Spin
 } from 'antd';
 import {
@@ -21,12 +18,10 @@ import {
   ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { useGetIdentity } from '@refinedev/core';
-import { supabaseClient } from '../utility';
+import { supabaseClient } from '../../utility';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
-const { Option } = Select;
-const { RangePicker } = DatePicker;
 
 interface BookingStats {
   totalBookings: number;
@@ -58,17 +53,13 @@ export const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs().subtract(30, 'days'),
-    dayjs()
-  ]);
 
   const isTherapist = identity?.role === 'therapist';
   const isAdmin = identity?.role === 'super_admin' || identity?.role === 'admin';
 
   useEffect(() => {
     fetchDashboardData();
-  }, [identity, dateRange]);
+  }, [identity]);
 
   const fetchDashboardData = async () => {
     try {
