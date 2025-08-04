@@ -23,6 +23,16 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
+// Define identity interface
+interface UserIdentity {
+  id?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  role?: string;
+  name?: string;
+}
+
 interface BookingStats {
   totalBookings: number;
   todayBookings: number;
@@ -49,7 +59,7 @@ interface RecentBooking {
 }
 
 export const Dashboard: React.FC = () => {
-  const { data: identity } = useGetIdentity();
+  const { data: identity } = useGetIdentity<UserIdentity>();
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +68,9 @@ export const Dashboard: React.FC = () => {
   const isAdmin = identity?.role === 'super_admin' || identity?.role === 'admin';
 
   useEffect(() => {
-    fetchDashboardData();
+    if (identity) {
+      fetchDashboardData();
+    }
   }, [identity]);
 
   const fetchDashboardData = async () => {
@@ -256,11 +268,20 @@ export const Dashboard: React.FC = () => {
     );
   }
 
+  // Show loading if no identity yet
+  if (!identity) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24 }}>
         <Title level={2}>
-          {isTherapist ? `Welcome back, ${identity?.first_name}!` : 'Rejuvenators Dashboard'}
+          {isTherapist ? `Welcome back, ${identity?.first_name || identity?.name || 'Therapist'}!` : 'Rejuvenators Dashboard'}
         </Title>
         <Text type="secondary">
           {isTherapist 
