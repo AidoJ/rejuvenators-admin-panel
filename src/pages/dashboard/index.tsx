@@ -156,9 +156,11 @@ export const Dashboard: React.FC = () => {
         };
         break;
       case 'currentQuarter':
+        const quarterStart = now.startOf('month').subtract((now.month() % 3), 'month');
+        const quarterEnd = quarterStart.add(2, 'month').endOf('month');
         newRange = {
-          start: now.startOf('quarter'),
-          end: now.endOf('quarter')
+          start: quarterStart,
+          end: quarterEnd
         };
         break;
       case 'currentYear':
@@ -177,8 +179,8 @@ export const Dashboard: React.FC = () => {
     setDateRange(newRange);
   };
 
-  const handleCustomDateRange = (dates: [Dayjs, Dayjs] | null) => {
-    if (dates) {
+  const handleCustomDateRange = (dates: [Dayjs | null, Dayjs | null] | null) => {
+    if (dates && dates[0] && dates[1]) {
       setDateRange({
         start: dates[0].startOf('day'),
         end: dates[1].endOf('day')
