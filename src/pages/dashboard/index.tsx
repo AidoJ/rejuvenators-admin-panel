@@ -7,7 +7,11 @@ import {
   Table, 
   Tag, 
   Typography, 
-  Spin
+  Spin,
+  DatePicker,
+  Select,
+  Space,
+  Button
 } from 'antd';
 import {
   DollarOutlined,
@@ -17,13 +21,16 @@ import {
   ClockCircleOutlined,
   ExclamationCircleOutlined,
   PercentageOutlined,
-  TeamOutlined
+  TeamOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import { useGetIdentity } from '@refinedev/core';
 import { supabaseClient } from '../../utility';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
+const { Option } = Select;
 
 // Define identity interface
 interface UserIdentity {
@@ -37,23 +44,16 @@ interface UserIdentity {
 
 interface BookingStats {
   totalBookings: number;
-  todayBookings: number;
-  weekBookings: number;
-  monthBookings: number;
   totalRevenue: number;
-  weekRevenue: number;
-  monthRevenue: number;
   totalTherapistFees: number;
-  weekTherapistFees: number;
-  monthTherapistFees: number;
   totalNetMargin: number;
-  weekNetMargin: number;
-  monthNetMargin: number;
   activeTherapists: number;
   completedBookings: number;
   confirmedBookings: number;
   pendingBookings: number;
   cancelledBookings: number;
+  averageBookingValue: number;
+  conversionRate: number;
 }
 
 interface RecentBooking {
@@ -67,11 +67,36 @@ interface RecentBooking {
   therapist_fee?: number;
 }
 
+interface DateRange {
+  start: Dayjs;
+  end: Dayjs;
+}
+
+// Preset date range options
+const DATE_PRESETS = {
+  today: { label: 'Today', days: 0 },
+  week: { label: 'Last 7 Days', days: 7 },
+  month: { label: 'Last 30 Days', days: 30 },
+  quarter: { label: 'Last 90 Days', days: 90 },
+  year: { label: 'Last 365 Days', days: 365 },
+  currentWeek: { label: 'This Week', type: 'week' },
+  currentMonth: { label: 'This Month', type: 'month' },
+  currentQuarter: { label: 'This Quarter', type: 'quarter' },
+  currentYear: { label: 'This Year', type: 'year' }
+};
+
 export const Dashboard: React.FC = () => {
   const { data: identity } = useGetIdentity<UserIdentity>();
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Date range state - default to current month
+  const [dateRange, setDateRange] = useState<DateRange>({
+    start: dayjs().startOf('month'),
+    end: dayjs().endOf('month')
+  });
+  const [selectedPreset, setSelectedPreset] = useState<string>('currentMonth');
 
   const isTherapist = identity?.role === 'therapist';
   const isAdmin = identity?.role === 'super_admin' || identity?.role === 'admin';
@@ -80,7 +105,87 @@ export const Dashboard: React.FC = () => {
     if (identity) {
       fetchDashboardData();
     }
-  }, [identity]);
+  }, [identity, dateRange]);
+
+  const handlePresetChange = (preset: string) => {
+    setSelectedPreset(preset);
+    const now = dayjs();
+    let newRange: DateRange;
+
+    switch (preset) {
+      case 'today':
+        newRange = {
+          start: now.startOf('day'),
+          end: now.endOf('day')
+        };
+        break;
+      case 'week':
+        newRange = {
+          start: now.subtract(7, 'days').startOf('day'),
+          end: now.endOf('day')
+        };
+        break;
+      case 'month':
+        newRange = {
+          start: now.subtract(30, 'days').startOf('day'),
+          end: now.endOf('day')
+        };
+        break;
+      case 'quarter':
+        newRange = {
+          start: now.subtract(90, 'days').startOf('day'),
+          end: now.endOf('day')
+        };
+        break;
+      case 'year':
+        newRange = {
+          start: now.subtract(365, 'days').startOf('day'),
+          end: now.endOf('day')
+        };
+        break;
+      case 'currentWeek':
+        newRange = {
+          start: now.startOf('week'),
+          end: now.endOf('week')
+        };
+        break;
+      case 'currentMonth':
+        newRange = {
+          start: now.startOf('month'),
+          end: now.endOf('month')
+        };
+        break;
+      case 'currentQuarter':
+        newRange = {
+          start: now.startOf('quarter'),
+          end: now.endOf('quarter')
+        };
+        break;
+      case 'currentYear':
+        newRange = {
+          start: now.startOf('year'),
+          end: now.endOf('year')
+        };
+        break;
+      default:
+        newRange = {
+          start: now.startOf('month'),
+          end: now.endOf('month')
+        };
+    }
+    
+    setDateRange(newRange);
+  };
+
+  const handleCustomDateRange = (dates: [Dayjs, Dayjs] | null) => {
+    if (dates) {
+      setDateRange({
+        start: dates[0].startOf('day'),
+        end: dates[1].endOf('day')
+      });
+      setSelectedPreset('custom');
+    }
+  };
 
   const calculateMargin = (revenue: number, therapistFees: number): number => {
     if (revenue === 0) return 0;
@@ -99,7 +204,9 @@ export const Dashboard: React.FC = () => {
           therapist_profiles!bookings_therapist_id_fkey(first_name, last_name),
           customers(first_name, last_name),
           services(name)
-        `);
+        `)
+        .gte('booking_time', dateRange.start.toISOString())
+        .lte('booking_time', dateRange.end.toISOString());
 
       // If therapist, only show their bookings
       if (isTherapist && identity?.id) {
@@ -122,24 +229,7 @@ export const Dashboard: React.FC = () => {
         return;
       }
 
-      // Calculate statistics
-      const now = dayjs();
-      const todayStart = now.startOf('day');
-      const weekStart = now.startOf('week');
-      const monthStart = now.startOf('month');
-
-      const todayBookings = bookings?.filter(b => 
-        dayjs(b.booking_time).isAfter(todayStart)
-      ) || [];
-
-      const weekBookings = bookings?.filter(b => 
-        dayjs(b.booking_time).isAfter(weekStart)
-      ) || [];
-
-      const monthBookings = bookings?.filter(b => 
-        dayjs(b.booking_time).isAfter(monthStart)
-      ) || [];
-
+      // Calculate statistics for the selected date range
       const completedBookings = bookings?.filter(b => b.status === 'completed') || [];
       const confirmedBookings = bookings?.filter(b => b.status === 'confirmed') || [];
       const pendingBookings = bookings?.filter(b => b.status === 'requested') || [];
@@ -147,26 +237,14 @@ export const Dashboard: React.FC = () => {
 
       // Calculate revenue (only from completed bookings)
       const totalRevenue = completedBookings.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
-      const weekRevenue = weekBookings
-        .filter(b => b.status === 'completed')
-        .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
-      const monthRevenue = monthBookings
-        .filter(b => b.status === 'completed')
-        .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
 
       // Calculate therapist fees (only from completed bookings)
       const totalTherapistFees = completedBookings.reduce((sum, b) => sum + (parseFloat(b.therapist_fee) || 0), 0);
-      const weekTherapistFees = weekBookings
-        .filter(b => b.status === 'completed')
-        .reduce((sum, b) => sum + (parseFloat(b.therapist_fee) || 0), 0);
-      const monthTherapistFees = monthBookings
-        .filter(b => b.status === 'completed')
-        .reduce((sum, b) => sum + (parseFloat(b.therapist_fee) || 0), 0);
 
-      // Calculate net margins
+      // Calculate additional metrics
       const totalNetMargin = calculateMargin(totalRevenue, totalTherapistFees);
-      const weekNetMargin = calculateMargin(weekRevenue, weekTherapistFees);
-      const monthNetMargin = calculateMargin(monthRevenue, monthTherapistFees);
+      const averageBookingValue = completedBookings.length > 0 ? totalRevenue / completedBookings.length : 0;
+      const conversionRate = bookings && bookings.length > 0 ? (completedBookings.length / bookings.length) * 100 : 0;
 
       // Get active therapists count (admin only)
       let activeTherapists = 0;
@@ -180,26 +258,19 @@ export const Dashboard: React.FC = () => {
 
       const dashboardStats: BookingStats = {
         totalBookings: bookings?.length || 0,
-        todayBookings: todayBookings.length,
-        weekBookings: weekBookings.length,
-        monthBookings: monthBookings.length,
         totalRevenue,
-        weekRevenue,
-        monthRevenue,
         totalTherapistFees,
-        weekTherapistFees,
-        monthTherapistFees,
         totalNetMargin,
-        weekNetMargin,
-        monthNetMargin,
         activeTherapists,
         completedBookings: completedBookings.length,
         confirmedBookings: confirmedBookings.length,
         pendingBookings: pendingBookings.length,
-        cancelledBookings: cancelledBookings.length
+        cancelledBookings: cancelledBookings.length,
+        averageBookingValue,
+        conversionRate
       };
 
-      // Prepare recent bookings
+      // Prepare recent bookings (sorted by most recent)
       const recent = bookings
         ?.sort((a, b) => dayjs(b.booking_time).unix() - dayjs(a.booking_time).unix())
         .slice(0, 10)
@@ -293,13 +364,20 @@ export const Dashboard: React.FC = () => {
       key: 'price',
       render: (price: number) => `$${price.toFixed(2)}`,
     },
-    {
+    ...(isAdmin ? [{
       title: 'Therapist Fee',
       dataIndex: 'therapist_fee',
       key: 'therapist_fee',
       render: (fee: number) => fee ? `$${fee.toFixed(2)}` : '-',
-    },
+    }] : []),
   ];
+
+  const formatDateRange = () => {
+    if (selectedPreset !== 'custom') {
+      return DATE_PRESETS[selectedPreset as keyof typeof DATE_PRESETS]?.label || 'Custom Range';
+    }
+    return `${dateRange.start.format('MMM DD, YYYY')} - ${dateRange.end.format('MMM DD, YYYY')}`;
+  };
 
   if (loading) {
     return (
@@ -321,15 +399,59 @@ export const Dashboard: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 24 }}>
-        <Title level={2}>
-          {isTherapist ? `Welcome back, ${identity?.first_name || identity?.name || 'Therapist'}!` : 'Rejuvenators Dashboard'}
-        </Title>
-        <Text type="secondary">
-          {isTherapist 
-            ? 'Here\'s an overview of your bookings and performance'
-            : 'Overview of your massage booking business'
-          }
-        </Text>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <Title level={2}>
+              {isTherapist ? `Welcome back, ${identity?.first_name || identity?.name || 'Therapist'}!` : 'Rejuvenators Dashboard'}
+            </Title>
+            <Text type="secondary">
+              {isTherapist 
+                ? 'Here\'s an overview of your bookings and performance'
+                : 'Overview of your massage booking business'
+              }
+            </Text>
+            <div style={{ marginTop: 8 }}>
+              <Text strong>Period: </Text>
+              <Text>{formatDateRange()}</Text>
+            </div>
+          </div>
+          
+          {/* Date Range Controls */}
+          <Card size="small" style={{ minWidth: 400 }}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <div>
+                <Text strong>Quick Select:</Text>
+                <Select
+                  value={selectedPreset}
+                  onChange={handlePresetChange}
+                  style={{ width: '100%', marginTop: 4 }}
+                >
+                  {Object.entries(DATE_PRESETS).map(([key, value]) => (
+                    <Option key={key} value={key}>{value.label}</Option>
+                  ))}
+                </Select>
+              </div>
+              
+              <div>
+                <Text strong>Custom Range:</Text>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <RangePicker
+                    value={selectedPreset === 'custom' ? [dateRange.start, dateRange.end] : null}
+                    onChange={handleCustomDateRange}
+                    style={{ flex: 1 }}
+                  />
+                  <Button 
+                    icon={<ReloadOutlined />} 
+                    onClick={fetchDashboardData}
+                    loading={loading}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+            </Space>
+          </Card>
+        </div>
       </div>
 
       {/* Key Statistics */}
@@ -337,8 +459,8 @@ export const Dashboard: React.FC = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Today's Bookings"
-              value={stats?.todayBookings || 0}
+              title="Total Bookings"
+              value={stats?.totalBookings || 0}
               prefix={<CalendarOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
@@ -347,9 +469,10 @@ export const Dashboard: React.FC = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="This Week"
-              value={stats?.weekBookings || 0}
-              prefix={<CalendarOutlined />}
+              title="Total Revenue"
+              value={stats?.totalRevenue || 0}
+              prefix={<DollarOutlined />}
+              precision={2}
               valueStyle={{ color: '#52c41a' }}
             />
           </Card>
@@ -357,9 +480,10 @@ export const Dashboard: React.FC = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="This Month"
-              value={stats?.monthBookings || 0}
-              prefix={<CalendarOutlined />}
+              title="Avg Booking Value"
+              value={stats?.averageBookingValue || 0}
+              prefix={<DollarOutlined />}
+              precision={2}
               valueStyle={{ color: '#722ed1' }}
             />
           </Card>
@@ -367,139 +491,60 @@ export const Dashboard: React.FC = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Total Bookings"
-              value={stats?.totalBookings || 0}
-              prefix={<CalendarOutlined />}
+              title="Conversion Rate"
+              value={stats?.conversionRate || 0}
+              prefix={<PercentageOutlined />}
+              precision={1}
+              suffix="%"
               valueStyle={{ color: '#fa8c16' }}
             />
           </Card>
         </Col>
       </Row>
 
-      {/* Revenue Statistics */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="Week Revenue"
-              value={stats?.weekRevenue || 0}
-              prefix={<DollarOutlined />}
-              precision={2}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="Month Revenue"
-              value={stats?.monthRevenue || 0}
-              prefix={<DollarOutlined />}
-              precision={2}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title={isAdmin ? "Active Therapists" : "Your Completed"}
-              value={isAdmin ? stats?.activeTherapists || 0 : stats?.completedBookings || 0}
-              prefix={isAdmin ? <UserOutlined /> : <CheckCircleOutlined />}
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Therapist Fees Statistics (Admin only) */}
+      {/* Admin-specific Statistics */}
       {isAdmin && (
-        <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Week Therapist Fees"
-                value={stats?.weekTherapistFees || 0}
-                prefix={<TeamOutlined />}
-                precision={2}
-                valueStyle={{ color: '#fa541c' }}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Month Therapist Fees"
-                value={stats?.monthTherapistFees || 0}
-                prefix={<TeamOutlined />}
-                precision={2}
-                valueStyle={{ color: '#fa541c' }}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Total Therapist Fees"
-                value={stats?.totalTherapistFees || 0}
-                prefix={<TeamOutlined />}
-                precision={2}
-                valueStyle={{ color: '#fa541c' }}
-              />
-            </Card>
-          </Col>
-        </Row>
-      )}
-
-      {/* Net Margin Statistics (Admin only) */}
-      {isAdmin && (
-        <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Week Net Margin"
-                value={stats?.weekNetMargin || 0}
-                prefix={<PercentageOutlined />}
-                precision={1}
-                suffix="%"
-                valueStyle={{ 
-                  color: (stats?.weekNetMargin || 0) >= 50 ? '#52c41a' : 
-                         (stats?.weekNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
-                }}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Month Net Margin"
-                value={stats?.monthNetMargin || 0}
-                prefix={<PercentageOutlined />}
-                precision={1}
-                suffix="%"
-                valueStyle={{ 
-                  color: (stats?.monthNetMargin || 0) >= 50 ? '#52c41a' : 
-                         (stats?.monthNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
-                }}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Total Net Margin"
-                value={stats?.totalNetMargin || 0}
-                prefix={<PercentageOutlined />}
-                precision={1}
-                suffix="%"
-                valueStyle={{ 
-                  color: (stats?.totalNetMargin || 0) >= 50 ? '#52c41a' : 
-                         (stats?.totalNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
-                }}
-              />
-            </Card>
-          </Col>
-        </Row>
+        <>
+          {/* Therapist Fees and Margins */}
+          <Row gutter={16} style={{ marginBottom: 24 }}>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="Total Therapist Fees"
+                  value={stats?.totalTherapistFees || 0}
+                  prefix={<TeamOutlined />}
+                  precision={2}
+                  valueStyle={{ color: '#fa541c' }}
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="Net Margin"
+                  value={stats?.totalNetMargin || 0}
+                  prefix={<PercentageOutlined />}
+                  precision={1}
+                  suffix="%"
+                  valueStyle={{ 
+                    color: (stats?.totalNetMargin || 0) >= 50 ? '#52c41a' : 
+                           (stats?.totalNetMargin || 0) >= 30 ? '#fa8c16' : '#ff4d4f' 
+                  }}
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="Active Therapists"
+                  value={stats?.activeTherapists || 0}
+                  prefix={<UserOutlined />}
+                  valueStyle={{ color: '#722ed1' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+        </>
       )}
 
       {/* Booking Status Overview */}
@@ -547,12 +592,17 @@ export const Dashboard: React.FC = () => {
       </Row>
 
       {/* Recent Bookings */}
-      <Card title="Recent Bookings" style={{ marginBottom: 24 }}>
+      <Card title={`Bookings in Selected Period (${stats?.totalBookings || 0} total)`} style={{ marginBottom: 24 }}>
         <Table
           dataSource={recentBookings}
           columns={recentBookingsColumns}
           rowKey="id"
-          pagination={{ pageSize: 5 }}
+          pagination={{ 
+            pageSize: 10,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} bookings`
+          }}
           size="middle"
         />
       </Card>
