@@ -37,6 +37,7 @@ import {
 import { useGetIdentity } from '@refinedev/core';
 import { supabaseClient } from '../../utility';
 import { UserIdentity, isTherapist } from '../../utils/roleUtils';
+import { RoleGuard } from '../../components/RoleGuard';
 import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';
 
@@ -322,15 +323,6 @@ export const TherapistProfileManagement: React.FC = () => {
     },
   ];
 
-  if (!isTherapist(userRole)) {
-    return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <Title level={3}>Access Denied</Title>
-        <Text>Only therapists can access profile management.</Text>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
@@ -340,308 +332,310 @@ export const TherapistProfileManagement: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <Title level={2}>My Profile</Title>
-      <Text type="secondary">Manage your profile, availability, and services</Text>
+    <RoleGuard requiredRole="therapist">
+      <div style={{ padding: 24 }}>
+        <Title level={2}>My Profile</Title>
+        <Text type="secondary">Manage your profile, availability, and services</Text>
 
-      <Row gutter={24} style={{ marginTop: 24 }}>
-        {/* Profile Overview */}
-        <Col span={8}>
-          <Card>
-            <div style={{ textAlign: 'center' }}>
-              <Avatar
-                size={120}
-                src={profile?.profile_pic}
-                icon={<UserOutlined />}
-                style={{ marginBottom: 16 }}
-              />
-              <Title level={4} style={{ margin: 0 }}>
-                {profile?.first_name} {profile?.last_name}
-              </Title>
-              <Text type="secondary">{profile?.email}</Text>
-              
-              <Divider />
-              
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                <div>
-                  <StarOutlined style={{ color: '#faad14', marginRight: 8 }} />
-                  <Text strong>{profile?.rating.toFixed(1)}</Text>
-                  <Text type="secondary"> ({profile?.total_reviews} reviews)</Text>
-                </div>
+        <Row gutter={24} style={{ marginTop: 24 }}>
+          {/* Profile Overview */}
+          <Col span={8}>
+            <Card>
+              <div style={{ textAlign: 'center' }}>
+                <Avatar
+                  size={120}
+                  src={profile?.profile_pic}
+                  icon={<UserOutlined />}
+                  style={{ marginBottom: 16 }}
+                />
+                <Title level={4} style={{ margin: 0 }}>
+                  {profile?.first_name} {profile?.last_name}
+                </Title>
+                <Text type="secondary">{profile?.email}</Text>
                 
-                <div>
-                  <Text type="secondary">Experience: </Text>
-                  <Text>{profile?.years_experience || 0} years</Text>
-                </div>
+                <Divider />
                 
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <div>
+                    <StarOutlined style={{ color: '#faad14', marginRight: 8 }} />
+                    <Text strong>{profile?.rating.toFixed(1)}</Text>
+                    <Text type="secondary"> ({profile?.total_reviews} reviews)</Text>
+                  </div>
+                  
+                  <div>
+                    <Text type="secondary">Experience: </Text>
+                    <Text>{profile?.years_experience || 0} years</Text>
+                  </div>
+                  
+                  <div>
+                    <Text type="secondary">Status: </Text>
+                    <Tag color={profile?.is_active ? 'green' : 'red'}>
+                      {profile?.is_active ? 'Active' : 'Inactive'}
+                    </Tag>
+                  </div>
+                </Space>
+              </div>
+            </Card>
+          </Col>
+
+          {/* Profile Management Tabs */}
+          <Col span={16}>
+            <Card
+              tabList={[
+                { key: 'profile', tab: 'Profile Details' },
+                { key: 'availability', tab: 'Availability' },
+                { key: 'services', tab: 'Services' },
+              ]}
+              activeTabKey={activeTab}
+              onTabChange={(key) => setActiveTab(key as 'profile' | 'availability' | 'services')}
+            >
+              {/* Profile Tab */}
+              {activeTab === 'profile' && (
+                <Form
+                  form={profileForm}
+                  layout="vertical"
+                  onFinish={handleProfileSave}
+                  initialValues={profile || {}}
+                >
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        label="First Name"
+                        name="first_name"
+                        rules={[{ required: true, message: 'Please enter your first name' }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        label="Last Name"
+                        name="last_name"
+                        rules={[{ required: true, message: 'Please enter your last name' }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        label="Email"
+                        name="email"
+                        rules={[
+                          { required: true, message: 'Please enter your email' },
+                          { type: 'email', message: 'Please enter a valid email' }
+                        ]}
+                      >
+                        <Input prefix={<MailOutlined />} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        label="Phone"
+                        name="phone"
+                      >
+                        <Input prefix={<PhoneOutlined />} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        label="Gender"
+                        name="gender"
+                      >
+                        <Select>
+                          <Option value="male">Male</Option>
+                          <Option value="female">Female</Option>
+                          <Option value="other">Other</Option>
+                          <Option value="prefer_not_to_say">Prefer not to say</Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        label="Years of Experience"
+                        name="years_experience"
+                      >
+                        <InputNumber min={0} max={50} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Form.Item
+                    label="Profile Picture"
+                  >
+                    <Upload {...uploadProps}>
+                      {fileList.length >= 1 ? null : (
+                        <div>
+                          <PlusOutlined />
+                          <div style={{ marginTop: 8 }}>Upload</div>
+                        </div>
+                      )}
+                    </Upload>
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Bio"
+                    name="bio"
+                  >
+                    <TextArea
+                      rows={4}
+                      placeholder="Tell customers about yourself, your specialties, and your approach to massage therapy..."
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Home Address"
+                    name="home_address"
+                  >
+                    <Input
+                      prefix={<EnvironmentOutlined />}
+                      placeholder="Your service area base address"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Service Radius (km)"
+                    name="service_radius_km"
+                  >
+                    <InputNumber
+                      min={1}
+                      max={100}
+                      style={{ width: '100%' }}
+                      placeholder="How far are you willing to travel?"
+                    />
+                  </Form.Item>
+
+                  <Form.Item>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      loading={saving}
+                      icon={<SaveOutlined />}
+                    >
+                      Save Profile
+                    </Button>
+                  </Form.Item>
+                </Form>
+              )}
+
+              {/* Availability Tab */}
+              {activeTab === 'availability' && (
                 <div>
-                  <Text type="secondary">Status: </Text>
-                  <Tag color={profile?.is_active ? 'green' : 'red'}>
-                    {profile?.is_active ? 'Active' : 'Inactive'}
-                  </Tag>
+                  <Title level={4}>Set Your Availability</Title>
+                  <Text type="secondary">
+                    Define when you're available for bookings. Customers will only be able to book during these times.
+                  </Text>
+
+                  <Divider />
+
+                  {/* Add Availability Form */}
+                  <Card title="Add New Availability" size="small" style={{ marginBottom: 16 }}>
+                    <Form
+                      form={availabilityForm}
+                      layout="inline"
+                      onFinish={handleAvailabilityAdd}
+                    >
+                      <Form.Item
+                        name="day_of_week"
+                        rules={[{ required: true, message: 'Select a day' }]}
+                      >
+                        <Select placeholder="Select Day" style={{ width: 120 }}>
+                          {dayNames.map((day, index) => (
+                            <Option key={index} value={index}>{day}</Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+
+                      <Form.Item
+                        name="start_time"
+                        rules={[{ required: true, message: 'Select start time' }]}
+                      >
+                        <TimePicker format="h:mm A" placeholder="Start Time" />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="end_time"
+                        rules={[{ required: true, message: 'Select end time' }]}
+                      >
+                        <TimePicker format="h:mm A" placeholder="End Time" />
+                      </Form.Item>
+
+                      <Form.Item>
+                        <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
+                          Add
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </Card>
+
+                  {/* Current Availability */}
+                  <Table
+                    dataSource={availability}
+                    columns={availabilityColumns}
+                    rowKey="id"
+                    size="small"
+                    pagination={false}
+                  />
                 </div>
-              </Space>
-            </div>
-          </Card>
-        </Col>
+              )}
 
-        {/* Profile Management Tabs */}
-        <Col span={16}>
-          <Card
-            tabList={[
-              { key: 'profile', tab: 'Profile Details' },
-              { key: 'availability', tab: 'Availability' },
-              { key: 'services', tab: 'Services' },
-            ]}
-            activeTabKey={activeTab}
-            onTabChange={(key) => setActiveTab(key as 'profile' | 'availability' | 'services')}
-          >
-            {/* Profile Tab */}
-            {activeTab === 'profile' && (
-              <Form
-                form={profileForm}
-                layout="vertical"
-                onFinish={handleProfileSave}
-                initialValues={profile || {}}
-              >
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      label="First Name"
-                      name="first_name"
-                      rules={[{ required: true, message: 'Please enter your first name' }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      label="Last Name"
-                      name="last_name"
-                      rules={[{ required: true, message: 'Please enter your last name' }]}
-                    >
-                      <Input />
-                    </Form.Item>
-                  </Col>
-                </Row>
+              {/* Services Tab */}
+              {activeTab === 'services' && (
+                <div>
+                  <Title level={4}>Select Your Services</Title>
+                  <Text type="secondary">
+                    Choose which massage services you offer. This will determine what customers can book with you.
+                  </Text>
 
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      label="Email"
-                      name="email"
-                      rules={[
-                        { required: true, message: 'Please enter your email' },
-                        { type: 'email', message: 'Please enter a valid email' }
-                      ]}
-                    >
-                      <Input prefix={<MailOutlined />} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      label="Phone"
-                      name="phone"
-                    >
-                      <Input prefix={<PhoneOutlined />} />
-                    </Form.Item>
-                  </Col>
-                </Row>
+                  <Divider />
 
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      label="Gender"
-                      name="gender"
-                    >
-                      <Select>
-                        <Option value="male">Male</Option>
-                        <Option value="female">Female</Option>
-                        <Option value="other">Other</Option>
-                        <Option value="prefer_not_to_say">Prefer not to say</Option>
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      label="Years of Experience"
-                      name="years_experience"
-                    >
-                      <InputNumber min={0} max={50} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
+                  <div style={{ marginBottom: 16 }}>
+                    {services.map(service => (
+                      <Card
+                        key={service.id}
+                        size="small"
+                        style={{ marginBottom: 8 }}
+                        extra={
+                          <Switch
+                            checked={selectedServices.includes(service.id)}
+                            onChange={(checked) => {
+                              if (checked) {
+                                setSelectedServices([...selectedServices, service.id]);
+                              } else {
+                                setSelectedServices(selectedServices.filter(id => id !== service.id));
+                              }
+                            }}
+                          />
+                        }
+                      >
+                        <Space direction="vertical" size="small">
+                          <Text strong>{service.name}</Text>
+                          <Text type="secondary">{service.description}</Text>
+                          <Text>Base Price: ${service.service_base_price}</Text>
+                        </Space>
+                      </Card>
+                    ))}
+                  </div>
 
-                <Form.Item
-                  label="Profile Picture"
-                >
-                  <Upload {...uploadProps}>
-                    {fileList.length >= 1 ? null : (
-                      <div>
-                        <PlusOutlined />
-                        <div style={{ marginTop: 8 }}>Upload</div>
-                      </div>
-                    )}
-                  </Upload>
-                </Form.Item>
-
-                <Form.Item
-                  label="Bio"
-                  name="bio"
-                >
-                  <TextArea
-                    rows={4}
-                    placeholder="Tell customers about yourself, your specialties, and your approach to massage therapy..."
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label="Home Address"
-                  name="home_address"
-                >
-                  <Input
-                    prefix={<EnvironmentOutlined />}
-                    placeholder="Your service area base address"
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label="Service Radius (km)"
-                  name="service_radius_km"
-                >
-                  <InputNumber
-                    min={1}
-                    max={100}
-                    style={{ width: '100%' }}
-                    placeholder="How far are you willing to travel?"
-                  />
-                </Form.Item>
-
-                <Form.Item>
                   <Button
                     type="primary"
-                    htmlType="submit"
+                    onClick={handleServicesUpdate}
                     loading={saving}
                     icon={<SaveOutlined />}
                   >
-                    Save Profile
+                    Update Services
                   </Button>
-                </Form.Item>
-              </Form>
-            )}
-
-            {/* Availability Tab */}
-            {activeTab === 'availability' && (
-              <div>
-                <Title level={4}>Set Your Availability</Title>
-                <Text type="secondary">
-                  Define when you're available for bookings. Customers will only be able to book during these times.
-                </Text>
-
-                <Divider />
-
-                {/* Add Availability Form */}
-                <Card title="Add New Availability" size="small" style={{ marginBottom: 16 }}>
-                  <Form
-                    form={availabilityForm}
-                    layout="inline"
-                    onFinish={handleAvailabilityAdd}
-                  >
-                    <Form.Item
-                      name="day_of_week"
-                      rules={[{ required: true, message: 'Select a day' }]}
-                    >
-                      <Select placeholder="Select Day" style={{ width: 120 }}>
-                        {dayNames.map((day, index) => (
-                          <Option key={index} value={index}>{day}</Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-
-                    <Form.Item
-                      name="start_time"
-                      rules={[{ required: true, message: 'Select start time' }]}
-                    >
-                      <TimePicker format="h:mm A" placeholder="Start Time" />
-                    </Form.Item>
-
-                    <Form.Item
-                      name="end_time"
-                      rules={[{ required: true, message: 'Select end time' }]}
-                    >
-                      <TimePicker format="h:mm A" placeholder="End Time" />
-                    </Form.Item>
-
-                    <Form.Item>
-                      <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
-                        Add
-                      </Button>
-                    </Form.Item>
-                  </Form>
-                </Card>
-
-                {/* Current Availability */}
-                <Table
-                  dataSource={availability}
-                  columns={availabilityColumns}
-                  rowKey="id"
-                  size="small"
-                  pagination={false}
-                />
-              </div>
-            )}
-
-            {/* Services Tab */}
-            {activeTab === 'services' && (
-              <div>
-                <Title level={4}>Select Your Services</Title>
-                <Text type="secondary">
-                  Choose which massage services you offer. This will determine what customers can book with you.
-                </Text>
-
-                <Divider />
-
-                <div style={{ marginBottom: 16 }}>
-                  {services.map(service => (
-                    <Card
-                      key={service.id}
-                      size="small"
-                      style={{ marginBottom: 8 }}
-                      extra={
-                        <Switch
-                          checked={selectedServices.includes(service.id)}
-                          onChange={(checked) => {
-                            if (checked) {
-                              setSelectedServices([...selectedServices, service.id]);
-                            } else {
-                              setSelectedServices(selectedServices.filter(id => id !== service.id));
-                            }
-                          }}
-                        />
-                      }
-                    >
-                      <Space direction="vertical" size="small">
-                        <Text strong>{service.name}</Text>
-                        <Text type="secondary">{service.description}</Text>
-                        <Text>Base Price: ${service.service_base_price}</Text>
-                      </Space>
-                    </Card>
-                  ))}
                 </div>
-
-                <Button
-                  type="primary"
-                  onClick={handleServicesUpdate}
-                  loading={saving}
-                  icon={<SaveOutlined />}
-                >
-                  Update Services
-                </Button>
-              </div>
-            )}
-          </Card>
-        </Col>
-      </Row>
-    </div>
+              )}
+            </Card>
+          </Col>
+        </Row>
+      </div>
+    </RoleGuard>
   );
 };
