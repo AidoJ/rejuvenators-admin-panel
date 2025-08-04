@@ -16,9 +16,8 @@
     "antd": "^5.17.0",
     "@ant-design/icons": "^5.5.1",
     "@uiw/react-md-editor": "^3.19.5",
-    "@refinedev/react-router": "^1.0.0"
-    "dayjs": "^1.11.10",
-    "@ant-design/icons": "^5.2.6"
+    "@refinedev/react-router": "^1.0.0",
+    "dayjs": "^1.11.10"
   },
   "devDependencies": {
     "@types/node": "^18.16.2",
