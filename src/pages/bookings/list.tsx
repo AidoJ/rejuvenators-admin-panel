@@ -517,7 +517,7 @@ export const EnhancedBookingList: React.FC = () => {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => window.open('https://rejuvenators.com.au/book', '_blank')}
+                onClick={() => window.open('https://rmmbookingplatform.netlify.app/', '_blank')}
               >
                 Create New Booking
               </Button>
