@@ -89,15 +89,6 @@ function App() {
                     },
                   },
                   {
-                    name: "booking-calendar",
-                    list: "/bookings/calendar",
-                    meta: {
-                      label: "Calendar View",
-                      icon: "📅",
-                      parent: "bookings",
-                    },
-                  },
-                  {
                     name: "therapist_profiles",
                     list: "/therapists",
                     show: "/therapists/show/:id",
