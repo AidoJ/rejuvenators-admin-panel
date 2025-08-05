@@ -104,7 +104,7 @@ interface Therapist {
 
 export const EnhancedBookingList: React.FC = () => {
   const { data: identity } = useGetIdentity<UserIdentity>();
-  const { edit, show } = useNavigation();
+  const { edit, show, push } = useNavigation();
   
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<BookingRecord[]>([]);
@@ -437,7 +437,7 @@ export const EnhancedBookingList: React.FC = () => {
             <Button
               size="small"
               icon={<EyeOutlined />}
-              onClick={() => show('bookings', record.id)}
+              onClick={() => push(`/bookings/show/${record.id}`)}
               title="View Details"
             />
             {(canAccess(userRole, 'canEditAllBookings') || canAccess(userRole, 'canEditOwnBookings')) && (
@@ -445,7 +445,7 @@ export const EnhancedBookingList: React.FC = () => {
                 size="small"
                 type="primary"
                 icon={<EditOutlined />}
-                onClick={() => edit('bookings', record.id)}
+                onClick={() => push(`/bookings/edit/${record.id}`)}
                 title="Edit Booking"
               />
             )}
@@ -502,6 +502,12 @@ export const EnhancedBookingList: React.FC = () => {
           <Col>
             <Space>
               <Button 
+                icon={<CalendarOutlined />}
+                onClick={() => push('/bookings/calendar')}
+              >
+                Calendar View
+              </Button>
+              <Button 
                 icon={<ReloadOutlined />} 
                 onClick={fetchData}
                 loading={loading}
@@ -511,7 +517,7 @@ export const EnhancedBookingList: React.FC = () => {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => window.open('https://rejuvenators.com.au/book', '_blank')}  // Replace with your booking platform URL
+                onClick={() => window.open('https://rejuvenators.com.au/book', '_blank')}
               >
                 Create New Booking
               </Button>
