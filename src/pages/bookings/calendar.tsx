@@ -429,11 +429,16 @@ export const CalendarBookingManagement: React.FC = () => {
           width={400}
           open={showBookingDrawer}
           onClose={() => setShowBookingDrawer(false)}
-          extra={
-            <Space>
-              {(canAccess(userRole, 'canEditAllBookings') || canAccess(userRole, 'canEditOwnBookings')) && (
-                <Button type="primary">Edit</Button>
-              )}
+         extra={
+  <Space>
+    {(canAccess(userRole, 'canEditAllBookings') || canAccess(userRole, 'canEditOwnBookings')) && (
+      <Button 
+        type="primary"
+        onClick={() => window.open(`/bookings/edit/${selectedBooking?.id}`, '_self')}
+      >
+        Edit
+      </Button>
+    )}
               {canAccess(userRole, 'canDeleteBookings') && (
                 <Button danger>Cancel</Button>
               )}
