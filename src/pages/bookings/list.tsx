@@ -115,8 +115,79 @@ export const EnhancedBookingList: React.FC = () => {
   
   const userRole = identity?.role;
 
+  // Debug function to check database connection and tables
+  const debugDatabase = async () => {
+    console.log('=== DATABASE DEBUG ===');
+    
+    try {
+      // Check if we can connect to bookings table
+      const { count: bookingsCount, error: bookingsError } = await supabaseClient
+        .from('bookings')
+        .select('*', { count: 'exact', head: true });
+      
+      if (bookingsError) {
+        console.error('Bookings table error:', bookingsError);
+      } else {
+        console.log('Bookings table accessible, count:', bookingsCount);
+      }
+
+      // Check customers table
+      const { count: customersCount, error: customersError } = await supabaseClient
+        .from('customers')
+        .select('*', { count: 'exact', head: true });
+      
+      if (customersError) {
+        console.error('Customers table error:', customersError);
+      } else {
+        console.log('Customers table accessible, count:', customersCount);
+      }
+
+      // Check therapist_profiles table
+      const { count: therapistsCount, error: therapistsError } = await supabaseClient
+        .from('therapist_profiles')
+        .select('*', { count: 'exact', head: true });
+      
+      if (therapistsError) {
+        console.error('Therapist_profiles table error:', therapistsError);
+      } else {
+        console.log('Therapist_profiles table accessible, count:', therapistsCount);
+      }
+
+      // Check services table
+      const { count: servicesCount, error: servicesError } = await supabaseClient
+        .from('services')
+        .select('*', { count: 'exact', head: true });
+      
+      if (servicesError) {
+        console.error('Services table error:', servicesError);
+      } else {
+        console.log('Services table accessible, count:', servicesCount);
+      }
+
+      // Get first few booking records to see structure
+      const { data: sampleBookings, error: sampleError } = await supabaseClient
+        .from('bookings')
+        .select('*')
+        .limit(3);
+      
+      if (sampleError) {
+        console.error('Sample bookings error:', sampleError);
+      } else {
+        console.log('Sample bookings:', sampleBookings);
+      }
+
+    } catch (error) {
+      console.error('Debug error:', error);
+    }
+    
+    console.log('=== END DEBUG ===');
+  };
+
   useEffect(() => {
-    fetchData();
+    if (identity) {
+      debugDatabase(); // Debug first
+      fetchData();
+    }
   }, [identity]);
 
   useEffect(() => {
@@ -137,14 +208,12 @@ export const EnhancedBookingList: React.FC = () => {
 
   const fetchBookings = async () => {
     try {
+      console.log('Fetching bookings...');
+      
+      // First, let's just get basic bookings data
       let query = supabaseClient
         .from('bookings')
-        .select(`
-          *,
-          customers(id, first_name, last_name, email, phone),
-          therapist_profiles(id, first_name, last_name, email, phone),
-          services(id, name, description)
-        `)
+        .select('*')
         .order('booking_time', { ascending: false });
 
       // If therapist, only show their bookings
@@ -160,12 +229,86 @@ export const EnhancedBookingList: React.FC = () => {
         }
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      const { data: bookingsData, error: bookingsError } = await query;
       
-      setBookings(data || []);
+      if (bookingsError) {
+        console.error('Error fetching bookings:', bookingsError);
+        throw bookingsError;
+      }
+
+      console.log('Raw bookings data:', bookingsData);
+
+      if (!bookingsData || bookingsData.length === 0) {
+        console.log('No bookings found');
+        setBookings([]);
+        return;
+      }
+
+      // Now let's enrich the data with related information
+      const enrichedBookings = await Promise.all(
+        bookingsData.map(async (booking) => {
+          let enrichedBooking = { ...booking };
+
+          // Get customer data
+          if (booking.customer_id) {
+            try {
+              const { data: customer } = await supabaseClient
+                .from('customers')
+                .select('id, first_name, last_name, email, phone')
+                .eq('id', booking.customer_id)
+                .single();
+              
+              if (customer) {
+                enrichedBooking.customers = customer;
+              }
+            } catch (error) {
+              console.log('Customer not found for booking:', booking.id);
+            }
+          }
+
+          // Get therapist data
+          if (booking.therapist_id) {
+            try {
+              const { data: therapist } = await supabaseClient
+                .from('therapist_profiles')
+                .select('id, first_name, last_name, email, phone')
+                .eq('id', booking.therapist_id)
+                .single();
+              
+              if (therapist) {
+                enrichedBooking.therapist_profiles = therapist;
+              }
+            } catch (error) {
+              console.log('Therapist not found for booking:', booking.id);
+            }
+          }
+
+          // Get service data
+          if (booking.service_id) {
+            try {
+              const { data: service } = await supabaseClient
+                .from('services')
+                .select('id, name, description')
+                .eq('id', booking.service_id)
+                .single();
+              
+              if (service) {
+                enrichedBooking.services = service;
+              }
+            } catch (error) {
+              console.log('Service not found for booking:', booking.id);
+            }
+          }
+
+          return enrichedBooking;
+        })
+      );
+
+      console.log('Enriched bookings:', enrichedBookings);
+      setBookings(enrichedBookings);
     } catch (error) {
       console.error('Error fetching bookings:', error);
+      message.error(`Failed to load bookings: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -517,7 +660,7 @@ export const EnhancedBookingList: React.FC = () => {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => window.open('https://rmmbookingplatform.netlify.app/', '_blank')}
+                onClick={() => window.open('https://rejuvenators.com.au/book', '_blank')}
               >
                 Create New Booking
               </Button>
