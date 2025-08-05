@@ -261,7 +261,7 @@ export const EnhancedBookingList: React.FC = () => {
               if (customer) {
                 enrichedBooking.customers = customer;
               }
-            } catch (error) {
+            } catch (customerError) {
               console.log('Customer not found for booking:', booking.id);
             }
           }
@@ -278,7 +278,7 @@ export const EnhancedBookingList: React.FC = () => {
               if (therapist) {
                 enrichedBooking.therapist_profiles = therapist;
               }
-            } catch (error) {
+            } catch (therapistError) {
               console.log('Therapist not found for booking:', booking.id);
             }
           }
@@ -295,7 +295,7 @@ export const EnhancedBookingList: React.FC = () => {
               if (service) {
                 enrichedBooking.services = service;
               }
-            } catch (error) {
+            } catch (serviceError) {
               console.log('Service not found for booking:', booking.id);
             }
           }
@@ -308,7 +308,7 @@ export const EnhancedBookingList: React.FC = () => {
       setBookings(enrichedBookings);
     } catch (error) {
       console.error('Error fetching bookings:', error);
-      message.error(`Failed to load bookings: ${error.message || 'Unknown error'}`);
+      message.error(`Failed to load bookings: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
