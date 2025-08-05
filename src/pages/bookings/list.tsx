@@ -1,83 +1,98 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Table,
   Card,
-  Row,
-  Col,
-  Button,
+  Table,
   Space,
-  Typography,
-  Tag,
+  Button,
   Input,
   Select,
   DatePicker,
+  Tag,
+  Dropdown,
   Modal,
   message,
-  Tooltip,
-  Badge,
-  Dropdown,
-  Menu,
-  Checkbox,
-  Popconfirm,
-  Avatar,
-  Drawer,
-  Form,
-  TimePicker,
-  Switch,
-  Divider,
+  Typography,
+  Row,
+  Col,
   Statistic,
+  Badge,
+  Tooltip,
+  Popconfirm,
 } from 'antd';
 import {
   SearchOutlined,
   FilterOutlined,
-  PlusOutlined,
+  ExportOutlined,
   EditOutlined,
   EyeOutlined,
-  DeleteOutlined,
-  MoreOutlined,
-  CalendarOutlined,
   UserOutlined,
+  CalendarOutlined,
   DollarOutlined,
   PhoneOutlined,
   EnvironmentOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   ClockCircleOutlined,
+  CheckCircleOutlined,
   ExclamationCircleOutlined,
+  PlusOutlined,
   ReloadOutlined,
-  ExportOutlined,
 } from '@ant-design/icons';
 import { useGetIdentity, useNavigation } from '@refinedev/core';
 import { supabaseClient } from '../../utility';
-import { UserIdentity, canAccess, isTherapist, isAdmin } from '../../utils/roleUtils';
+import { UserIdentity, canAccess } from '../../utils/roleUtils';
 import { RoleGuard } from '../../components/RoleGuard';
-import dayjs, { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
+import type { TableColumnsType } from 'antd';
 
 const { Title, Text } = Typography;
-const { Option } = Select;
 const { RangePicker } = DatePicker;
-const { Search } = Input;
+const { Option } = Select;
 
 // Interfaces
-interface Booking {
+interface BookingRecord {
   id: string;
-  customer_id: string;
-  therapist_id: string;
-  service_id: string;
   booking_time: string;
   status: string;
   payment_status: string;
   price: number;
-  therapist_fee: number;
+  therapist_fee?: number;
   address: string;
   notes?: string;
-  customer_name: string;
-  therapist_name: string;
-  service_name: string;
+  duration_minutes?: number;
   customer_email?: string;
   customer_phone?: string;
+  booker_name?: string;
+  first_name?: string;
+  last_name?: string;
+  business_name?: string;
+  room_number?: string;
   created_at: string;
-  updated_at: string;
+  customers?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone?: string;
+  };
+  therapist_profiles?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone?: string;
+  };
+  services?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+}
+
+interface FilterState {
+  status?: string;
+  therapist_id?: string;
+  date_range?: [dayjs.Dayjs, dayjs.Dayjs];
+  search?: string;
+  payment_status?: string;
 }
 
 interface Therapist {
@@ -87,68 +102,70 @@ interface Therapist {
   is_active: boolean;
 }
 
-interface Service {
-  id: string;
-  name: string;
-  is_active: boolean;
-}
-
-interface Customer {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-}
-
-export const BookingList: React.FC = () => {
+export const EnhancedBookingList: React.FC = () => {
   const { data: identity } = useGetIdentity<UserIdentity>();
-  const { show, edit } = useNavigation();
-  const [loading, setLoading] = useState(true);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const { edit, show } = useNavigation();
+  
+  const [bookings, setBookings] = useState<BookingRecord[]>([]);
+  const [filteredBookings, setFilteredBookings] = useState<BookingRecord[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
-  const [filters, setFilters] = useState({
-    search: '',
-    status: 'all',
-    payment_status: 'all',
-    therapist_id: 'all',
-    service_id: 'all',
-    date_range: null as [Dayjs, Dayjs] | null,
-  });
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 20,
-    total: 0,
-  });
-  const [showFilters, setShowFilters] = useState(false);
-  const [showBulkActions, setShowBulkActions] = useState(false);
-  const [bulkActionLoading, setBulkActionLoading] = useState(false);
-
+  const [loading, setLoading] = useState(true);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [filters, setFilters] = useState<FilterState>({});
+  
   const userRole = identity?.role;
 
   useEffect(() => {
-    if (identity) {
-      initializeData();
-    }
+    fetchData();
   }, [identity]);
 
   useEffect(() => {
-    fetchBookings();
-  }, [filters, pagination.current, pagination.pageSize]);
+    applyFilters();
+  }, [filters, bookings]);
 
-  const initializeData = async () => {
+  const fetchData = async () => {
     try {
-      await Promise.all([
-        fetchTherapists(),
-        fetchServices(),
-        fetchCustomers(),
-      ]);
+      setLoading(true);
+      await Promise.all([fetchBookings(), fetchTherapists()]);
     } catch (error) {
-      console.error('Error initializing data:', error);
-      message.error('Failed to load initial data');
+      console.error('Error fetching data:', error);
+      message.error('Failed to load booking data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchBookings = async () => {
+    try {
+      let query = supabaseClient
+        .from('bookings')
+        .select(`
+          *,
+          customers(id, first_name, last_name, email, phone),
+          therapist_profiles(id, first_name, last_name, email, phone),
+          services(id, name, description)
+        `)
+        .order('booking_time', { ascending: false });
+
+      // If therapist, only show their bookings
+      if (userRole === 'therapist' && identity?.id) {
+        const { data: therapistProfile } = await supabaseClient
+          .from('therapist_profiles')
+          .select('id')
+          .eq('user_id', identity.id)
+          .single();
+        
+        if (therapistProfile) {
+          query = query.eq('therapist_id', therapistProfile.id);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      setBookings(data || []);
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
     }
   };
 
@@ -167,127 +184,55 @@ export const BookingList: React.FC = () => {
     }
   };
 
-  const fetchServices = async () => {
-    try {
-      const { data, error } = await supabaseClient
-        .from('services')
-        .select('id, name, is_active')
-        .eq('is_active', true)
-        .order('name');
+  const applyFilters = () => {
+    let filtered = [...bookings];
 
-      if (error) throw error;
-      setServices(data || []);
-    } catch (error) {
-      console.error('Error fetching services:', error);
+    // Status filter
+    if (filters.status) {
+      filtered = filtered.filter(booking => booking.status === filters.status);
     }
-  };
 
-  const fetchCustomers = async () => {
-    try {
-      const { data, error } = await supabaseClient
-        .from('customers')
-        .select('id, first_name, last_name, email, phone')
-        .order('first_name');
-
-      if (error) throw error;
-      setCustomers(data || []);
-    } catch (error) {
-      console.error('Error fetching customers:', error);
+    // Therapist filter
+    if (filters.therapist_id) {
+      filtered = filtered.filter(booking => booking.therapist_profiles?.id === filters.therapist_id);
     }
-  };
 
-  const fetchBookings = async () => {
-    setLoading(true);
-    try {
-      let query = supabaseClient
-        .from('bookings')
-        .select(`
-          *,
-          customers!inner(first_name, last_name, email, phone),
-          therapist_profiles!inner(first_name, last_name),
-          services!inner(name)
-        `)
-        .order('booking_time', { ascending: false });
-
-      // Apply filters
-      if (filters.status !== 'all') {
-        query = query.eq('status', filters.status);
-      }
-      if (filters.payment_status !== 'all') {
-        query = query.eq('payment_status', filters.payment_status);
-      }
-      if (filters.therapist_id !== 'all') {
-        query = query.eq('therapist_id', filters.therapist_id);
-      }
-      if (filters.service_id !== 'all') {
-        query = query.eq('service_id', filters.service_id);
-      }
-      if (filters.date_range) {
-        query = query
-          .gte('booking_time', filters.date_range[0].format('YYYY-MM-DD'))
-          .lte('booking_time', filters.date_range[1].format('YYYY-MM-DD'));
-      }
-      if (filters.search) {
-        query = query.or(`
-          customers.first_name.ilike.%${filters.search}%,
-          customers.last_name.ilike.%${filters.search}%,
-          customers.email.ilike.%${filters.search}%,
-          customers.phone.ilike.%${filters.search}%,
-          therapist_profiles.first_name.ilike.%${filters.search}%,
-          therapist_profiles.last_name.ilike.%${filters.search}%,
-          services.name.ilike.%${filters.search}%
-        `);
-      }
-
-      // Apply pagination
-      const from = (pagination.current - 1) * pagination.pageSize;
-      const to = from + pagination.pageSize - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      // Transform data to include joined fields
-      const transformedBookings = (data || []).map((booking: any) => ({
-        ...booking,
-        customer_name: `${booking.customers.first_name} ${booking.customers.last_name}`,
-        therapist_name: `${booking.therapist_profiles.first_name} ${booking.therapist_profiles.last_name}`,
-        service_name: booking.services.name,
-        customer_email: booking.customers.email,
-        customer_phone: booking.customers.phone,
-      }));
-
-      setBookings(transformedBookings);
-      setPagination(prev => ({ ...prev, total: count || 0 }));
-    } catch (error) {
-      console.error('Error fetching bookings:', error);
-      message.error('Failed to load bookings');
-    } finally {
-      setLoading(false);
+    // Date range filter
+    if (filters.date_range) {
+      const [start, end] = filters.date_range;
+      filtered = filtered.filter(booking => {
+        const bookingDate = dayjs(booking.booking_time);
+        return bookingDate.isAfter(start.startOf('day')) && bookingDate.isBefore(end.endOf('day'));
+      });
     }
-  };
 
-  const getStatusColor = (status: string) => {
-    const colors: { [key: string]: string } = {
-      requested: 'orange',
-      confirmed: 'blue',
-      completed: 'green',
-      cancelled: 'red',
-      declined: 'red',
-      timeout_reassigned: 'purple',
-      seeking_alternate: 'orange',
-    };
-    return colors[status] || 'default';
-  };
+    // Payment status filter
+    if (filters.payment_status) {
+      filtered = filtered.filter(booking => booking.payment_status === filters.payment_status);
+    }
 
-  const getPaymentStatusColor = (status: string) => {
-    const colors: { [key: string]: string } = {
-      pending: 'orange',
-      paid: 'green',
-      refunded: 'red',
-    };
-    return colors[status] || 'default';
+    // Search filter
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(booking => {
+        const customerName = booking.customers 
+          ? `${booking.customers.first_name} ${booking.customers.last_name}`
+          : booking.booker_name || `${booking.first_name || ''} ${booking.last_name || ''}`.trim();
+        
+        return (
+          customerName.toLowerCase().includes(searchLower) ||
+          booking.customer_email?.toLowerCase().includes(searchLower) ||
+          booking.customer_phone?.includes(filters.search!) ||
+          booking.id.toLowerCase().includes(searchLower) ||
+          booking.therapist_profiles?.first_name?.toLowerCase().includes(searchLower) ||
+          booking.therapist_profiles?.last_name?.toLowerCase().includes(searchLower) ||
+          booking.services?.name?.toLowerCase().includes(searchLower) ||
+          booking.address?.toLowerCase().includes(searchLower)
+        );
+      });
+    }
+
+    setFilteredBookings(filtered);
   };
 
   const handleStatusChange = async (bookingId: string, newStatus: string) => {
@@ -300,20 +245,14 @@ export const BookingList: React.FC = () => {
       if (error) throw error;
 
       message.success(`Booking status updated to ${newStatus}`);
-      fetchBookings();
+      fetchBookings(); // Refresh data
     } catch (error) {
-      console.error('Error updating booking status:', error);
+      console.error('Error updating status:', error);
       message.error('Failed to update booking status');
     }
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('Please select bookings to update');
-      return;
-    }
-
-    setBulkActionLoading(true);
     try {
       const { error } = await supabaseClient
         .from('bookings')
@@ -326,188 +265,245 @@ export const BookingList: React.FC = () => {
       setSelectedRowKeys([]);
       fetchBookings();
     } catch (error) {
-      console.error('Error updating bulk bookings:', error);
+      console.error('Error updating bookings:', error);
       message.error('Failed to update bookings');
-    } finally {
-      setBulkActionLoading(false);
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('Please select bookings to delete');
-      return;
-    }
-
-    setBulkActionLoading(true);
-    try {
-      const { error } = await supabaseClient
-        .from('bookings')
-        .delete()
-        .in('id', selectedRowKeys);
-
-      if (error) throw error;
-
-      message.success(`Deleted ${selectedRowKeys.length} bookings`);
-      setSelectedRowKeys([]);
-      fetchBookings();
-    } catch (error) {
-      console.error('Error deleting bookings:', error);
-      message.error('Failed to delete bookings');
-    } finally {
-      setBulkActionLoading(false);
-    }
+  const getStatusColor = (status: string) => {
+    const colors = {
+      requested: 'orange',
+      confirmed: 'blue',
+      completed: 'green',
+      cancelled: 'red',
+      declined: 'red',
+      timeout_reassigned: 'purple',
+      seeking_alternate: 'yellow',
+    };
+    return colors[status as keyof typeof colors] || 'default';
   };
 
-  const columns = [
+  const getStatusIcon = (status: string) => {
+    const icons = {
+      requested: <ClockCircleOutlined />,
+      confirmed: <CalendarOutlined />,
+      completed: <CheckCircleOutlined />,
+      cancelled: <ExclamationCircleOutlined />,
+      declined: <ExclamationCircleOutlined />,
+    };
+    return icons[status as keyof typeof icons] || <ClockCircleOutlined />;
+  };
+
+  const statusMenuItems = [
+    { key: 'requested', label: 'Mark as Requested', icon: <ClockCircleOutlined /> },
+    { key: 'confirmed', label: 'Mark as Confirmed', icon: <CalendarOutlined /> },
+    { key: 'completed', label: 'Mark as Completed', icon: <CheckCircleOutlined /> },
+    { key: 'cancelled', label: 'Mark as Cancelled', icon: <ExclamationCircleOutlined /> },
+  ];
+
+  const columns: TableColumnsType<BookingRecord> = [
     {
       title: 'Customer',
-      dataIndex: 'customer_name',
-      key: 'customer_name',
-      render: (text: string, record: Booking) => (
-        <Space direction="vertical" size="small">
-          <Text strong>{text}</Text>
-          <Space size="small">
-            {record.customer_email && (
-              <Tooltip title={record.customer_email}>
-                <UserOutlined style={{ color: '#1890ff' }} />
-              </Tooltip>
+      key: 'customer',
+      width: 200,
+      render: (_, record) => {
+        const customerName = record.customers 
+          ? `${record.customers.first_name} ${record.customers.last_name}`
+          : record.booker_name || `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'Unknown';
+        
+        return (
+          <div>
+            <Text strong>{customerName}</Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              {record.customers?.email || record.customer_email || 'No email'}
+            </Text>
+            {(record.customers?.phone || record.customer_phone) && (
+              <div>
+                <PhoneOutlined style={{ marginRight: 4, fontSize: '10px' }} />
+                <Text type="secondary" style={{ fontSize: '10px' }}>
+                  {record.customers?.phone || record.customer_phone}
+                </Text>
+              </div>
             )}
-            {record.customer_phone && (
-              <Tooltip title={record.customer_phone}>
-                <PhoneOutlined style={{ color: '#52c41a' }} />
-              </Tooltip>
-            )}
-          </Space>
-        </Space>
-      ),
-    },
-    {
-      title: 'Service',
-      dataIndex: 'service_name',
-      key: 'service_name',
-      render: (text: string) => <Text>{text}</Text>,
+          </div>
+        );
+      },
     },
     {
       title: 'Therapist',
-      dataIndex: 'therapist_name',
-      key: 'therapist_name',
-      render: (text: string) => <Text>{text}</Text>,
+      key: 'therapist',
+      width: 150,
+      render: (_, record) => (
+        <div>
+          {record.therapist_profiles ? (
+            <>
+              <Text strong>
+                {record.therapist_profiles.first_name} {record.therapist_profiles.last_name}
+              </Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                {record.therapist_profiles.email}
+              </Text>
+            </>
+          ) : (
+            <Tag color="orange">Unassigned</Tag>
+          )}
+        </div>
+      ),
     },
     {
-      title: 'Date & Time',
-      dataIndex: 'booking_time',
-      key: 'booking_time',
-      render: (text: string) => (
-        <Space direction="vertical" size="small">
-          <Text>{dayjs(text).format('MMM DD, YYYY')}</Text>
-          <Text type="secondary">{dayjs(text).format('HH:mm')}</Text>
-        </Space>
+      title: 'Service & Time',
+      key: 'service_time',
+      width: 200,
+      render: (_, record) => (
+        <div>
+          <Text strong>{record.services?.name || 'Unknown Service'}</Text>
+          <br />
+          <Text type="secondary">
+            {dayjs(record.booking_time).format('MMM DD, YYYY')}
+          </Text>
+          <br />
+          <Text type="secondary">
+            <ClockCircleOutlined style={{ marginRight: 4 }} />
+            {dayjs(record.booking_time).format('h:mm A')} 
+            {record.duration_minutes && ` (${record.duration_minutes}min)`}
+          </Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Location',
+      dataIndex: 'address',
+      key: 'address',
+      width: 200,
+      render: (address: string) => (
+        <Tooltip title={address}>
+          <div style={{ maxWidth: 180 }}>
+            <EnvironmentOutlined style={{ marginRight: 4 }} />
+            <Text ellipsis>{address || 'No address'}</Text>
+          </div>
+        </Tooltip>
       ),
     },
     {
       title: 'Status',
-      dataIndex: 'status',
       key: 'status',
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)}>
-          {status.replace('_', ' ').toUpperCase()}
-        </Tag>
-      ),
-    },
-    {
-      title: 'Payment',
-      dataIndex: 'payment_status',
-      key: 'payment_status',
-      render: (status: string) => (
-        <Tag color={getPaymentStatusColor(status)}>
-          {status.toUpperCase()}
-        </Tag>
+      width: 120,
+      render: (_, record) => (
+        <div>
+          <Tag 
+            color={getStatusColor(record.status)} 
+            icon={getStatusIcon(record.status)}
+            style={{ marginBottom: 4 }}
+          >
+            {record.status.charAt(0).toUpperCase() + record.status.slice(1).replace('_', ' ')}
+          </Tag>
+          <br />
+          <Tag 
+            color={record.payment_status === 'paid' ? 'green' : record.payment_status === 'pending' ? 'orange' : 'red'}
+            style={{ fontSize: '10px' }}
+          >
+            {record.payment_status}
+          </Tag>
+        </div>
       ),
     },
     {
       title: 'Price',
-      dataIndex: 'price',
       key: 'price',
-      render: (price: number) => (
-        <Text strong style={{ color: '#52c41a' }}>
-          ${price.toFixed(2)}
-        </Text>
+      width: 100,
+      render: (_, record) => (
+        <div>
+          <Text strong>${record.price?.toFixed(2) || 'N/A'}</Text>
+          {canAccess(userRole, 'canViewAllEarnings') && record.therapist_fee && (
+            <>
+              <br />
+              <Text type="secondary" style={{ fontSize: '11px' }}>
+                Fee: ${record.therapist_fee.toFixed(2)}
+              </Text>
+            </>
+          )}
+        </div>
       ),
     },
     {
       title: 'Actions',
       key: 'actions',
-      render: (text: string, record: Booking) => (
-        <Space>
-          <Tooltip title="View Details">
+      width: 120,
+      render: (_, record) => (
+        <Space direction="vertical" size="small">
+          <Space>
             <Button
-              type="text"
+              size="small"
               icon={<EyeOutlined />}
               onClick={() => show('bookings', record.id)}
+              title="View Details"
             />
-          </Tooltip>
-          <Tooltip title="Edit Booking">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => edit('bookings', record.id)}
-            />
-          </Tooltip>
-          <Dropdown
-            overlay={
-              <Menu>
-                <Menu.Item
-                  key="confirm"
-                  onClick={() => handleStatusChange(record.id, 'confirmed')}
-                  disabled={record.status === 'confirmed'}
-                >
-                  Confirm
-                </Menu.Item>
-                <Menu.Item
-                  key="complete"
-                  onClick={() => handleStatusChange(record.id, 'completed')}
-                  disabled={record.status === 'completed'}
-                >
-                  Mark Complete
-                </Menu.Item>
-                <Menu.Item
-                  key="cancel"
-                  onClick={() => handleStatusChange(record.id, 'cancelled')}
-                  disabled={record.status === 'cancelled'}
-                >
-                  Cancel
-                </Menu.Item>
-              </Menu>
-            }
-          >
-            <Button type="text" icon={<MoreOutlined />} />
-          </Dropdown>
+            {(canAccess(userRole, 'canEditAllBookings') || canAccess(userRole, 'canEditOwnBookings')) && (
+              <Button
+                size="small"
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => edit('bookings', record.id)}
+                title="Edit Booking"
+              />
+            )}
+          </Space>
+          
+          {canAccess(userRole, 'canEditAllBookings') && (
+            <Dropdown
+              menu={{
+                items: statusMenuItems.map(item => ({
+                  ...item,
+                  onClick: () => handleStatusChange(record.id, item.key),
+                })),
+              }}
+              trigger={['click']}
+            >
+              <Button size="small" style={{ fontSize: '10px' }}>
+                Change Status
+              </Button>
+            </Dropdown>
+          )}
         </Space>
       ),
     },
   ];
 
-  const rowSelection = {
+  const rowSelection = canAccess(userRole, 'canEditAllBookings') ? {
     selectedRowKeys,
-    onChange: (selectedKeys: React.Key[]) => {
-      setSelectedRowKeys(selectedKeys as string[]);
-      setShowBulkActions(selectedKeys.length > 0);
-    },
+    onChange: setSelectedRowKeys,
+  } : undefined;
+
+  // Calculate summary stats
+  const summaryStats = {
+    total: filteredBookings.length,
+    completed: filteredBookings.filter(b => b.status === 'completed').length,
+    confirmed: filteredBookings.filter(b => b.status === 'confirmed').length,
+    pending: filteredBookings.filter(b => b.status === 'requested').length,
+    totalRevenue: filteredBookings
+      .filter(b => b.status === 'completed')
+      .reduce((sum, b) => sum + (b.price || 0), 0),
   };
 
   return (
-    <RoleGuard requiredRole="admin">
+    <RoleGuard requiredPermission="canViewBookingCalendar">
       <div style={{ padding: 24 }}>
-        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          <Col span={12}>
-            <Title level={3}>Bookings</Title>
+        <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
+          <Col>
+            <Title level={2} style={{ margin: 0 }}>
+              Booking Management
+            </Title>
+            <Text type="secondary">
+              Manage and track all massage bookings
+            </Text>
           </Col>
-          <Col span={12} style={{ textAlign: 'right' }}>
+          <Col>
             <Space>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={fetchBookings}
+              <Button 
+                icon={<ReloadOutlined />} 
+                onClick={fetchData}
                 loading={loading}
               >
                 Refresh
@@ -515,24 +511,68 @@ export const BookingList: React.FC = () => {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                href="https://your-booking-platform-url.com"
-                target="_blank"
+                onClick={() => window.open('https://rejuvenators.com.au/book', '_blank')}  // Replace with your booking platform URL
               >
-                New Booking
+                Create New Booking
               </Button>
             </Space>
           </Col>
         </Row>
 
+        {/* Summary Statistics */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="Total Bookings"
+                value={summaryStats.total}
+                prefix={<CalendarOutlined />}
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="Completed"
+                value={summaryStats.completed}
+                prefix={<CheckCircleOutlined />}
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="Confirmed"
+                value={summaryStats.confirmed}
+                prefix={<CalendarOutlined />}
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="Revenue"
+                value={summaryStats.totalRevenue}
+                prefix={<DollarOutlined />}
+                precision={2}
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
         {/* Filters */}
-        <Card style={{ marginBottom: 16 }}>
-          <Row gutter={[16, 16]} align="middle">
+        <Card style={{ marginBottom: 24 }}>
+          <Row gutter={16} align="middle">
             <Col span={6}>
-              <Search
-                placeholder="Search bookings..."
+              <Input
+                placeholder="Search customers, therapists, services..."
+                prefix={<SearchOutlined />}
                 value={filters.search}
-                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                onSearch={() => setPagination(prev => ({ ...prev, current: 1 }))}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                 allowClear
               />
             </Col>
@@ -540,11 +580,10 @@ export const BookingList: React.FC = () => {
               <Select
                 placeholder="Status"
                 value={filters.status}
-                onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-                style={{ width: '100%' }}
+                onChange={(value) => setFilters({ ...filters, status: value })}
                 allowClear
+                style={{ width: '100%' }}
               >
-                <Option value="all">All Status</Option>
                 <Option value="requested">Requested</Option>
                 <Option value="confirmed">Confirmed</Option>
                 <Option value="completed">Completed</Option>
@@ -554,27 +593,12 @@ export const BookingList: React.FC = () => {
             </Col>
             <Col span={4}>
               <Select
-                placeholder="Payment"
-                value={filters.payment_status}
-                onChange={(value) => setFilters(prev => ({ ...prev, payment_status: value }))}
-                style={{ width: '100%' }}
-                allowClear
-              >
-                <Option value="all">All Payments</Option>
-                <Option value="pending">Pending</Option>
-                <Option value="paid">Paid</Option>
-                <Option value="refunded">Refunded</Option>
-              </Select>
-            </Col>
-            <Col span={4}>
-              <Select
                 placeholder="Therapist"
                 value={filters.therapist_id}
-                onChange={(value) => setFilters(prev => ({ ...prev, therapist_id: value }))}
-                style={{ width: '100%' }}
+                onChange={(value) => setFilters({ ...filters, therapist_id: value })}
                 allowClear
+                style={{ width: '100%' }}
               >
-                <Option value="all">All Therapists</Option>
                 {therapists.map(therapist => (
                   <Option key={therapist.id} value={therapist.id}>
                     {therapist.first_name} {therapist.last_name}
@@ -582,118 +606,76 @@ export const BookingList: React.FC = () => {
                 ))}
               </Select>
             </Col>
-            <Col span={4}>
-              <Select
-                placeholder="Service"
-                value={filters.service_id}
-                onChange={(value) => setFilters(prev => ({ ...prev, service_id: value }))}
+            <Col span={6}>
+              <RangePicker
+                value={filters.date_range}
+                onChange={(dates) => setFilters({ 
+                  ...filters, 
+                  date_range: dates ? [dates[0]!, dates[1]!] : undefined 
+                })}
                 style={{ width: '100%' }}
-                allowClear
-              >
-                <Option value="all">All Services</Option>
-                {services.map(service => (
-                  <Option key={service.id} value={service.id}>
-                    {service.name}
-                  </Option>
-                ))}
-              </Select>
+              />
             </Col>
-            <Col span={2}>
+            <Col span={4}>
               <Button
-                icon={<FilterOutlined />}
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={() => setFilters({})}
+                style={{ width: '100%' }}
               >
-                More
+                Clear Filters
               </Button>
             </Col>
           </Row>
 
-          {showFilters && (
-            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-              <Col span={8}>
-                <RangePicker
-                  placeholder={['Start Date', 'End Date']}
-                  value={filters.date_range}
-                  onChange={(dates) => setFilters(prev => ({ ...prev, date_range: dates as [Dayjs, Dayjs] | null }))}
-                  style={{ width: '100%' }}
-                />
+          {/* Bulk Actions */}
+          {selectedRowKeys.length > 0 && canAccess(userRole, 'canEditAllBookings') && (
+            <Row style={{ marginTop: 16, padding: '12px', backgroundColor: '#f0f9ff', borderRadius: '6px' }}>
+              <Col span={24}>
+                <Space>
+                  <Text strong>{selectedRowKeys.length} bookings selected</Text>
+                  <Dropdown
+                    menu={{
+                      items: statusMenuItems.map(item => ({
+                        ...item,
+                        onClick: () => handleBulkStatusChange(item.key),
+                      })),
+                    }}
+                  >
+                    <Button type="primary" size="small">
+                      Bulk Status Change
+                    </Button>
+                  </Dropdown>
+                  <Button 
+                    size="small" 
+                    onClick={() => setSelectedRowKeys([])}
+                  >
+                    Clear Selection
+                  </Button>
+                </Space>
               </Col>
             </Row>
           )}
         </Card>
 
-        {/* Bulk Actions */}
-        {showBulkActions && (
-          <Card style={{ marginBottom: 16, backgroundColor: '#f0f8ff' }}>
-            <Row gutter={[16, 16]} align="middle">
-              <Col span={8}>
-                <Text strong>
-                  {selectedRowKeys.length} booking(s) selected
-                </Text>
-              </Col>
-              <Col span={16} style={{ textAlign: 'right' }}>
-                <Space>
-                  <Button
-                    onClick={() => handleBulkStatusChange('confirmed')}
-                    loading={bulkActionLoading}
-                    icon={<CheckCircleOutlined />}
-                  >
-                    Confirm Selected
-                  </Button>
-                  <Button
-                    onClick={() => handleBulkStatusChange('completed')}
-                    loading={bulkActionLoading}
-                    icon={<CheckCircleOutlined />}
-                  >
-                    Mark Complete
-                  </Button>
-                  <Button
-                    danger
-                    onClick={() => handleBulkStatusChange('cancelled')}
-                    loading={bulkActionLoading}
-                    icon={<CloseCircleOutlined />}
-                  >
-                    Cancel Selected
-                  </Button>
-                  <Popconfirm
-                    title="Are you sure you want to delete these bookings?"
-                    onConfirm={handleBulkDelete}
-                    okText="Yes"
-                    cancelText="No"
-                  >
-                    <Button
-                      danger
-                      loading={bulkActionLoading}
-                      icon={<DeleteOutlined />}
-                    >
-                      Delete Selected
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              </Col>
-            </Row>
-          </Card>
-        )}
-
         {/* Bookings Table */}
         <Card>
-          <Table
-            rowKey="id"
+          <Table<BookingRecord>
             columns={columns}
-            dataSource={bookings}
+            dataSource={filteredBookings}
+            rowKey="id"
             loading={loading}
+            rowSelection={rowSelection}
             pagination={{
-              ...pagination,
+              pageSize: 20,
               showSizeChanger: true,
               showQuickJumper: true,
-              showTotal: (total, range) =>
+              showTotal: (total, range) => 
                 `${range[0]}-${range[1]} of ${total} bookings`,
             }}
-            rowSelection={rowSelection}
             scroll={{ x: 1200 }}
+            size="small"
           />
         </Card>
       </div>
     </RoleGuard>
   );
-}; 
+};
