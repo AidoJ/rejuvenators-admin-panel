@@ -11,7 +11,6 @@ import {
   Typography,
   Divider,
   message,
-  Space,
   Progress,
   Alert,
   InputNumber,
@@ -48,13 +47,11 @@ interface TherapistProfile {
   total_reviews: number;
 }
 
-// ABN validation function
 const validateABN = (abn: string): boolean => {
   const cleanABN = abn.replace(/[\s-]/g, '');
   return /^\d{11}$/.test(cleanABN);
 };
 
-// Image optimization helper
 const getOptimizedImageUrl = (originalUrl: string, width?: number, height?: number): string => {
   if (!originalUrl) return '';
   
@@ -65,15 +62,11 @@ const getOptimizedImageUrl = (originalUrl: string, width?: number, height?: numb
     url.searchParams.set('quality', '80');
     return url.toString();
   } catch {
-    return originalUrl; // Return original if URL parsing fails
+    return originalUrl;
   }
 };
 
-// Photo upload function
-const uploadTherapistPhoto = async (
-  file: File, 
-  therapistId: string
-): Promise<string | null> => {
+const uploadTherapistPhoto = async (file: File, therapistId: string): Promise<string | null> => {
   try {
     if (file.type !== 'image/jpeg') {
       message.error('Only JPG images are allowed');
@@ -156,12 +149,11 @@ const TherapistProfileManagement: React.FC = () => {
     if (!profile) return false;
     
     try {
-      setUploadProgress(50); // Show progress
+      setUploadProgress(50);
       
       const photoUrl = await uploadTherapistPhoto(file, profile.id);
       
       if (photoUrl) {
-        // Update profile in database
         const { error } = await supabaseClient
           .from('therapist_profiles')
           .update({ profile_pic: photoUrl })
@@ -169,7 +161,6 @@ const TherapistProfileManagement: React.FC = () => {
 
         if (error) throw error;
 
-        // Update local state
         setProfile({ ...profile, profile_pic: photoUrl });
         form.setFieldValue('profile_pic', photoUrl);
         message.success('Photo uploaded successfully!');
@@ -192,7 +183,6 @@ const TherapistProfileManagement: React.FC = () => {
     try {
       setSaving(true);
       
-      // Validate ABN
       if (!validateABN(values.business_abn)) {
         message.error('Please enter a valid 11-digit ABN');
         return;
@@ -200,7 +190,7 @@ const TherapistProfileManagement: React.FC = () => {
       
       const updateData = {
         ...values,
-        business_abn: values.business_abn.replace(/[\s-]/g, ''), // Clean ABN
+        business_abn: values.business_abn.replace(/[\s-]/g, ''),
       };
 
       const { error } = await supabaseClient
@@ -220,7 +210,6 @@ const TherapistProfileManagement: React.FC = () => {
     }
   };
 
-  // Upload configuration
   const uploadProps: UploadProps = {
     name: 'file',
     listType: 'picture-card',
@@ -228,7 +217,7 @@ const TherapistProfileManagement: React.FC = () => {
     showUploadList: false,
     beforeUpload: (file) => {
       handlePhotoUpload(file);
-      return false; // Prevent auto upload
+      return false;
     },
     accept: 'image/jpeg',
   };
@@ -248,7 +237,6 @@ const TherapistProfileManagement: React.FC = () => {
         <Text type="secondary">Manage your profile information and photo</Text>
 
         <Row gutter={24} style={{ marginTop: 24 }}>
-          {/* Profile Photo Section */}
           <Col span={8}>
             <Card>
               <div style={{ textAlign: 'center' }}>
@@ -310,7 +298,6 @@ const TherapistProfileManagement: React.FC = () => {
             </Card>
           </Col>
 
-          {/* Profile Form */}
           <Col span={16}>
             <Card title="Profile Details">
               <Form
@@ -383,7 +370,7 @@ const TherapistProfileManagement: React.FC = () => {
                     >
                       <Input 
                         placeholder="12345678901" 
-                        maxLength={14} // Allow for spaces/hyphens
+                        maxLength={14}
                       />
                     </Form.Item>
                   </Col>
@@ -419,4 +406,48 @@ const TherapistProfileManagement: React.FC = () => {
                   <Col span={8}>
                     <Form.Item
                       label="Service Radius (km)"
-                      nam
+                      name="service_radius_km"
+                    >
+                      <InputNumber
+                        min={1}
+                        max={100}
+                        style={{ width: '100%' }}
+                        placeholder="Travel distance"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={saving}
+                    icon={<SaveOutlined />}
+                    size="large"
+                  >
+                    Save Profile
+                  </Button>
+                </Form.Item>
+              </Form>
+            </Card>
+          </Col>
+        </Row>
+
+        <Row style={{ marginTop: 24 }}>
+          <Col span={24}>
+            <Alert
+              message="Profile Photo Tips"
+              description="Your photo helps customers feel comfortable booking with you. Use a clear, professional headshot in good lighting. Photos are automatically optimized for fast loading."
+              type="info"
+              showIcon
+              closable
+            />
+          </Col>
+        </Row>
+      </div>
+    </RoleGuard>
+  );
+};
+
+export default TherapistProfileManagement;
