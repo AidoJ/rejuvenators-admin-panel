@@ -76,3 +76,4 @@ export const TherapistPhoto: React.FC<TherapistPhotoProps> = ({
     </Space>
   );
 };
+export default TherapistProfileManagement;
