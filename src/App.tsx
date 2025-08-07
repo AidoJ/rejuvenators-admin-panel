@@ -29,7 +29,7 @@ import { supabaseClient } from "./utility";
 // Import the booking management components
 import { EnhancedBookingList } from "./pages/bookings/list";
 import { CalendarBookingManagement } from "./pages/bookings/calendar";
-import { TherapistProfileManagement } from "./pages/therapists/profile";
+import TherapistProfileManagement from "./pages/therapists/profile";
 
 // Simple placeholder components for features we haven't built yet
 const BookingShow = () => <div style={{padding: 24}}><h1>Booking Details</h1><p>Individual booking details will go here</p></div>;
