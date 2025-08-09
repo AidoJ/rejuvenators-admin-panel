@@ -66,6 +66,7 @@ const getOptimizedImageUrl = (originalUrl: string, width?: number, height?: numb
   }
 };
 
+// FIXED: Simplified upload function for public bucket
 const uploadTherapistPhoto = async (file: File, therapistId: string): Promise<string | null> => {
   try {
     if (file.type !== 'image/jpeg') {
@@ -78,28 +79,34 @@ const uploadTherapistPhoto = async (file: File, therapistId: string): Promise<st
       return null;
     }
 
-    const fileExt = 'jpg';
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = `${therapistId}/${fileName}`;
+    // Simplified filename without folder structure
+    const fileName = `therapist-${therapistId}-${Date.now()}.jpg`;
+
+    console.log('Uploading file:', fileName);
 
     const { data, error } = await supabaseClient.storage
       .from('therapist-photos')
-      .upload(filePath, file, {
+      .upload(fileName, file, {
         cacheControl: '3600',
-        upsert: false
+        upsert: true  // Allow overwriting existing files
       });
 
     if (error) {
       console.error('Upload error:', error);
-      message.error('Failed to upload photo');
+      message.error(`Upload failed: ${error.message}`);
       return null;
     }
 
+    console.log('Upload successful:', data);
+
+    // Get the public URL
     const { data: { publicUrl } } = supabaseClient.storage
       .from('therapist-photos')
       .getPublicUrl(data.path);
 
+    console.log('Public URL:', publicUrl);
     return publicUrl;
+
   } catch (error) {
     console.error('Photo upload error:', error);
     message.error('Failed to upload photo');
@@ -111,7 +118,7 @@ const TherapistProfileManagement: React.FC = () => {
   const { data: identity } = useGetIdentity<UserIdentity>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState<TherapistProfile | null>(null);
   
   const [form] = Form.useForm();
@@ -146,36 +153,46 @@ const TherapistProfileManagement: React.FC = () => {
   };
 
   const handlePhotoUpload = async (file: File): Promise<boolean> => {
-    if (!profile) return false;
+    if (!profile) {
+      message.error('Profile not loaded');
+      return false;
+    }
     
     try {
-      setUploadProgress(50);
+      setUploading(true);
+      console.log('Starting photo upload for therapist:', profile.id);
       
       const photoUrl = await uploadTherapistPhoto(file, profile.id);
       
       if (photoUrl) {
+        console.log('Photo uploaded, updating database...');
+        
+        // Update profile in database
         const { error } = await supabaseClient
           .from('therapist_profiles')
           .update({ profile_pic: photoUrl })
           .eq('id', profile.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Database update error:', error);
+          throw error;
+        }
 
+        // Update local state
         setProfile({ ...profile, profile_pic: photoUrl });
         form.setFieldValue('profile_pic', photoUrl);
         message.success('Photo uploaded successfully!');
         
-        setUploadProgress(0);
         return true;
       }
       
-      setUploadProgress(0);
       return false;
     } catch (error) {
       console.error('Photo upload error:', error);
       message.error('Failed to upload photo');
-      setUploadProgress(0);
       return false;
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -217,7 +234,7 @@ const TherapistProfileManagement: React.FC = () => {
     showUploadList: false,
     beforeUpload: (file) => {
       handlePhotoUpload(file);
-      return false;
+      return false; // Prevent automatic upload
     },
     accept: 'image/jpeg',
   };
@@ -248,7 +265,7 @@ const TherapistProfileManagement: React.FC = () => {
                     style={{ marginBottom: 16 }}
                   />
                   
-                  {uploadProgress > 0 && (
+                  {uploading && (
                     <div style={{
                       position: 'absolute',
                       top: 0,
@@ -263,7 +280,7 @@ const TherapistProfileManagement: React.FC = () => {
                     }}>
                       <Progress
                         type="circle"
-                        percent={uploadProgress}
+                        percent={50}
                         width={80}
                         strokeColor="#1890ff"
                       />
@@ -273,8 +290,12 @@ const TherapistProfileManagement: React.FC = () => {
                 
                 <div>
                   <Upload {...uploadProps}>
-                    <Button icon={<CameraOutlined />} loading={uploadProgress > 0}>
-                      {profile?.profile_pic ? 'Change Photo' : 'Upload Photo'}
+                    <Button 
+                      icon={<CameraOutlined />} 
+                      loading={uploading}
+                      disabled={uploading}
+                    >
+                      {uploading ? 'Uploading...' : profile?.profile_pic ? 'Change Photo' : 'Upload Photo'}
                     </Button>
                   </Upload>
                   <div style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
@@ -445,6 +466,21 @@ const TherapistProfileManagement: React.FC = () => {
             />
           </Col>
         </Row>
+
+        {/* Debug Info (remove in production) */}
+        {profile && (
+          <Row style={{ marginTop: 16 }}>
+            <Col span={24}>
+              <Alert
+                message="Debug Info"
+                description={`Therapist ID: ${profile.id} | Current Photo: ${profile.profile_pic ? 'Set' : 'None'}`}
+                type="warning"
+                closable
+                style={{ fontSize: '12px' }}
+              />
+            </Col>
+          </Row>
+        )}
       </div>
     </RoleGuard>
   );
