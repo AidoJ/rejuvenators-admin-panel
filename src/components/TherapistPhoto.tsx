@@ -1,8 +1,3 @@
-// ========================================
-// REUSABLE COMPONENT: src/components/TherapistPhoto.tsx
-// For displaying therapist photos throughout the app
-// ========================================
-
 import React from 'react';
 import { Avatar, Space, Typography } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
@@ -18,18 +13,34 @@ interface TherapistPhotoProps {
   bio?: string;
 }
 
-// Image optimization helper
-const getOptimizedImageUrl = (originalUrl: string, width?: number, height?: number): string => {
+// Handle both Base64 and regular URLs
+const getDisplayImageUrl = (originalUrl: string): string => {
   if (!originalUrl) return '';
   
+  // If it's already a base64 string, return as-is
+  if (originalUrl.startsWith('data:image/')) {
+    return originalUrl;
+  }
+  
+  // If it's a regular URL, try to optimize it
   try {
     const url = new URL(originalUrl);
-    if (width) url.searchParams.set('width', width.toString());
-    if (height) url.searchParams.set('height', height.toString());
-    url.searchParams.set('quality', '80');
+    
+    // For Cloudinary URLs, add optimization
+    if (url.hostname.includes('cloudinary.com')) {
+      // Insert transformation parameters for Cloudinary
+      const pathParts = url.pathname.split('/');
+      const uploadIndex = pathParts.indexOf('upload');
+      if (uploadIndex !== -1) {
+        pathParts.splice(uploadIndex + 1, 0, 'w_240,h_240,c_fill,f_auto,q_auto');
+        url.pathname = pathParts.join('/');
+      }
+    }
+    
     return url.toString();
   } catch {
-    return originalUrl; // Return original if URL parsing fails
+    // If URL parsing fails, return original
+    return originalUrl;
   }
 };
 
@@ -40,13 +51,13 @@ export const TherapistPhoto: React.FC<TherapistPhotoProps> = ({
   showBio = false,
   bio
 }) => {
-  const optimizedUrl = photoUrl ? getOptimizedImageUrl(photoUrl, size * 2, size * 2) : undefined;
+  const displayUrl = photoUrl ? getDisplayImageUrl(photoUrl) : undefined;
 
   return (
     <Space direction="vertical" align="center" style={{ textAlign: 'center' }}>
       <Avatar
         size={size}
-        src={optimizedUrl}
+        src={displayUrl}
         icon={<UserOutlined />}
         style={{ 
           border: photoUrl ? '2px solid #f0f0f0' : 'none',
