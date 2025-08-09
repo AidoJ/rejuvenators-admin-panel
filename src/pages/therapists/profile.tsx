@@ -52,66 +52,14 @@ const validateABN = (abn: string): boolean => {
   return /^\d{11}$/.test(cleanABN);
 };
 
-const getOptimizedImageUrl = (originalUrl: string, width?: number, height?: number): string => {
-  if (!originalUrl) return '';
-  
-  try {
-    const url = new URL(originalUrl);
-    if (width) url.searchParams.set('width', width.toString());
-    if (height) url.searchParams.set('height', height.toString());
-    url.searchParams.set('quality', '80');
-    return url.toString();
-  } catch {
-    return originalUrl;
-  }
-};
-
-// FIXED: Simplified upload function for public bucket
-const uploadTherapistPhoto = async (file: File, therapistId: string): Promise<string | null> => {
-  try {
-    if (file.type !== 'image/jpeg') {
-      message.error('Only JPG images are allowed');
-      return null;
-    }
-    
-    if (file.size > 2 * 1024 * 1024) {
-      message.error('File size must be less than 2MB');
-      return null;
-    }
-
-    // Simplified filename without folder structure
-    const fileName = `therapist-${therapistId}-${Date.now()}.jpg`;
-
-    console.log('Uploading file:', fileName);
-
-    const { data, error } = await supabaseClient.storage
-      .from('therapist-photos')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: true  // Allow overwriting existing files
-      });
-
-    if (error) {
-      console.error('Upload error:', error);
-      message.error(`Upload failed: ${error.message}`);
-      return null;
-    }
-
-    console.log('Upload successful:', data);
-
-    // Get the public URL
-    const { data: { publicUrl } } = supabaseClient.storage
-      .from('therapist-photos')
-      .getPublicUrl(data.path);
-
-    console.log('Public URL:', publicUrl);
-    return publicUrl;
-
-  } catch (error) {
-    console.error('Photo upload error:', error);
-    message.error('Failed to upload photo');
-    return null;
-  }
+// SIMPLE BASE64 UPLOAD - NO EXTERNAL SERVICES
+const convertToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 };
 
 const TherapistProfileManagement: React.FC = () => {
@@ -160,33 +108,42 @@ const TherapistProfileManagement: React.FC = () => {
     
     try {
       setUploading(true);
-      console.log('Starting photo upload for therapist:', profile.id);
       
-      const photoUrl = await uploadTherapistPhoto(file, profile.id);
-      
-      if (photoUrl) {
-        console.log('Photo uploaded, updating database...');
-        
-        // Update profile in database
-        const { error } = await supabaseClient
-          .from('therapist_profiles')
-          .update({ profile_pic: photoUrl })
-          .eq('id', profile.id);
-
-        if (error) {
-          console.error('Database update error:', error);
-          throw error;
-        }
-
-        // Update local state
-        setProfile({ ...profile, profile_pic: photoUrl });
-        form.setFieldValue('profile_pic', photoUrl);
-        message.success('Photo uploaded successfully!');
-        
-        return true;
+      // Validate file
+      if (file.type !== 'image/jpeg') {
+        message.error('Only JPG images are allowed');
+        return false;
       }
       
-      return false;
+      if (file.size > 2 * 1024 * 1024) {
+        message.error('File size must be less than 2MB');
+        return false;
+      }
+
+      console.log('Converting image to Base64...');
+      
+      // Convert to Base64 - NO external upload!
+      const base64String = await convertToBase64(file);
+      console.log('Base64 conversion successful, length:', base64String.length);
+      
+      // Update profile in database directly
+      console.log('Updating database with Base64 string...');
+      const { error } = await supabaseClient
+        .from('therapist_profiles')
+        .update({ profile_pic: base64String })
+        .eq('id', profile.id);
+
+      if (error) {
+        console.error('Database update error:', error);
+        throw error;
+      }
+
+      // Update local state
+      setProfile({ ...profile, profile_pic: base64String });
+      form.setFieldValue('profile_pic', base64String);
+      message.success('Photo uploaded successfully!');
+      
+      return true;
     } catch (error) {
       console.error('Photo upload error:', error);
       message.error('Failed to upload photo');
@@ -260,7 +217,7 @@ const TherapistProfileManagement: React.FC = () => {
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                   <Avatar
                     size={120}
-                    src={profile?.profile_pic ? getOptimizedImageUrl(profile.profile_pic, 240, 240) : undefined}
+                    src={profile?.profile_pic}
                     icon={<UserOutlined />}
                     style={{ marginBottom: 16 }}
                   />
@@ -295,7 +252,7 @@ const TherapistProfileManagement: React.FC = () => {
                       loading={uploading}
                       disabled={uploading}
                     >
-                      {uploading ? 'Uploading...' : profile?.profile_pic ? 'Change Photo' : 'Upload Photo'}
+                      {uploading ? 'Converting...' : profile?.profile_pic ? 'Change Photo' : 'Upload Photo'}
                     </Button>
                   </Upload>
                   <div style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
@@ -458,23 +415,23 @@ const TherapistProfileManagement: React.FC = () => {
         <Row style={{ marginTop: 24 }}>
           <Col span={24}>
             <Alert
-              message="Profile Photo Tips"
-              description="Your photo helps customers feel comfortable booking with you. Use a clear, professional headshot in good lighting. Photos are automatically optimized for fast loading."
-              type="info"
+              message="✅ Photo Upload Working"
+              description="Photos are stored as Base64 data directly in your database. No external services required!"
+              type="success"
               showIcon
               closable
             />
           </Col>
         </Row>
 
-        {/* Debug Info (remove in production) */}
+        {/* Debug Info */}
         {profile && (
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>
               <Alert
                 message="Debug Info"
-                description={`Therapist ID: ${profile.id} | Current Photo: ${profile.profile_pic ? 'Set' : 'None'}`}
-                type="warning"
+                description={`Therapist ID: ${profile.id} | Photo: ${profile.profile_pic ? 'Yes (Base64)' : 'None'}`}
+                type="info"
                 closable
                 style={{ fontSize: '12px' }}
               />
